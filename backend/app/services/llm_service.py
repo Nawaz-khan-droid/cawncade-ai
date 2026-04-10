@@ -1,28 +1,30 @@
 import httpx
 import json
+import os
 from ..config.settings import get_settings
 from ..utils.logger import log
 
 settings = get_settings()
 
-
 class LLMService:
-    """Interface to HuggingFace Inference API (or any OpenAI-compatible endpoint)."""
+    """Interface to HuggingFace Inference API using Gemma-7b."""
 
     def __init__(self):
-        self.api_token = settings.HUGGINGFACE_API_TOKEN
-        self.base_url = settings.HUGGINGFACE_INFERENCE_URL
-        # Default model: use a free text-generation model
-        self.model_id = "mistralai/Mistral-7B-Instruct-v0.2"
+        # Use the token from settings/environment
+        self.api_token = settings.HUGGINGFACE_API_TOKEN or os.getenv("HUGGINGFACE_API_TOKEN")
+        
+        # Official Hugging Face Inference URL for Gemma-7b
+        self.base_url = "https://api-inference.huggingface.co/models/google/gemma-7b"
+        
         self.headers = {
             "Authorization": f"Bearer {self.api_token}",
             "Content-Type": "application/json",
         }
 
-    async def generate(self, prompt: str, system_prompt: str = None, max_tokens: int = 1024, temperature: float = 0.3) -> str:
+    async def generate(self, prompt: str, system_prompt: str = None, max_tokens: int = 1024, temperature: float = 0.7) -> str:
         """
         Generate text using HuggingFace Inference API.
-        Falls back gracefully if API is unavailable.
+        This uses httpx (async) to prevent blocking your FastAPI backend.
         """
         if not self.api_token:
             log.warning("No HUGGINGFACE_API_TOKEN set. Returning fallback response.")
@@ -32,8 +34,9 @@ class LLMService:
 
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
+                # We post directly to the base_url because it already includes the model ID
                 response = await client.post(
-                    f"{self.base_url}{self.model_id}",
+                    self.base_url,
                     headers=self.headers,
                     json={
                         "inputs": full_prompt,
@@ -46,11 +49,12 @@ class LLMService:
                 )
 
                 if response.status_code == 429:
-                    log.warning("HF API rate limited. Using fallback.")
+                    log.warning("HF API rate limited (429). Check your plan or token.")
                     return self._fallback_response(prompt)
 
                 response.raise_for_status()
                 result = response.json()
+                
                 if isinstance(result, list) and result:
                     return result[0].get("generated_text", "").strip()
                 return ""
@@ -71,13 +75,10 @@ class LLMService:
         return "\n".join(parts)
 
     def _fallback_response(self, prompt: str) -> str:
-        """Return a safe fallback when LLM is unavailable."""
         return (
             "Analysis based on retrieved sources without AI synthesis. "
-            "The system was unable to generate a detailed explanation at this time. "
-            "Please review the sources and scores manually."
+            "The system was unable to generate a detailed explanation via Gemma-7b at this time."
         )
 
-
-# Singleton instance
+# Singleton instance for use across the app
 llm_service = LLMService()

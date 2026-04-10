@@ -40,3 +40,6 @@ opentelemetry-instrumentation-fastapi==0.50b0
 
 # Utilities
 python-dotenv==1.0.1
+
+#Email
+email-validator
