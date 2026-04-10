@@ -5,7 +5,7 @@ Handles extraction of text content from URLs and raw HTML.
 import re
 import httpx
 from bs4 import BeautifulSoup
-from ..utils.logger import log
+from app.utils.logger import log
 from ...config.settings import get_settings
 
 settings = get_settings()
