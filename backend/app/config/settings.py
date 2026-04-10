@@ -60,8 +60,13 @@ class Settings(BaseSettings):
     RATE_LIMIT_WINDOW_SECONDS: int = 60
     RATE_LIMIT_ENABLED: bool = True
 
-    # CORS
-    CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    # CORS (works for both local dev and HF Spaces)
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://localhost:7860",
+        "https://*.hf.space",
+    ]
 
     class Config:
         env_file = ".env"
