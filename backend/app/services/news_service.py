@@ -43,6 +43,12 @@ def _get_httpx_client(timeout: float = 20.0) -> httpx.AsyncClient:
         kwargs["proxy"] = settings.WEBSHARE_PROXY_URL
     return httpx.AsyncClient(**kwargs)
 
+# TEMPORARY DEBUG LOG
+import os
+log.info(f"DEBUG: TAVILY_KEY exists: {bool(os.getenv('TAVILY_API_KEY'))}")
+log.info(f"DEBUG: GOOGLE_KEY exists: {bool(os.getenv('GOOGLE_API_KEY'))}")
+log.info(f"DEBUG: HF_TOKEN exists: {bool(os.getenv('HUGGINGFACE_API_TOKEN'))}")
+
 # ═══════════════════════════════════════════════════════════════
 # TIER 1: Google Custom Search — The Walled Garden
 # ═══════════════════════════════════════════════════════════════
