@@ -3,8 +3,20 @@ import sys
 from datetime import datetime
 
 
-def setup_logger(name: str = "cawncade", level: str = "INFO") -> logging.Logger:
-    """Configure and return a structured logger instance."""
+def setup_logger(name: str = "cawncade", level: str = None) -> logging.Logger:
+    """
+    Configure and return a structured logger instance.
+    Level is read from settings.LOG_LEVEL (HF Variable: LOG_LEVEL).
+    Falls back to INFO if not set or invalid.
+    """
+    if level is None:
+        try:
+            from app.config.settings import get_settings
+            _settings = get_settings()
+            level = getattr(_settings, "LOG_LEVEL", "INFO") or "INFO"
+        except Exception:
+            level = "INFO"
+
     logger = logging.getLogger(name)
     if logger.handlers:
         return logger
@@ -21,5 +33,5 @@ def setup_logger(name: str = "cawncade", level: str = "INFO") -> logging.Logger:
     return logger
 
 
-# Shared logger instance
+# Shared logger instance — reads LOG_LEVEL from HF Variables automatically
 log = setup_logger()

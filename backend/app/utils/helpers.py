@@ -19,11 +19,11 @@ def truncate_text(text: str, max_chars: int = 500) -> str:
 def is_valid_url(url: str) -> bool:
     """Basic URL validation."""
     pattern = re.compile(
-        r"^https?://"  # http:// or https://
-        r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|"  # domain
-        r"localhost|"  # localhost
-        r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"  # ip
-        r"(?::\d+)?"  # optional port
+        r"^https?://"
+        r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2}\.?)|"
+        r"localhost|"
+        r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"
+        r"(?::\d+)?"
         r"(?:/?|[/?]\S+)$",
         re.IGNORECASE,
     )
@@ -35,19 +35,15 @@ def extract_domain(url: str) -> str | None:
     match = re.match(r"https?://([^/]+)", url)
     if match:
         domain = match.group(1)
-        # Remove www. prefix
         domain = re.sub(r"^www\.", "", domain)
         return domain
     return None
 
 
 def compute_recency(published_at: datetime | None) -> float:
-    """
-    Compute recency score (0.0 to 1.0).
-    Fresher sources get higher scores.
-    """
+    """Compute recency score (0.0 to 1.0). Fresher sources get higher scores."""
     if published_at is None:
-        return 0.3  # Unknown recency = low-mid
+        return 0.3
 
     now = datetime.now(timezone.utc)
     if published_at.tzinfo is None:
@@ -63,9 +59,9 @@ def compute_recency(published_at: datetime | None) -> float:
         return 0.8
     elif delta_hours < 72:
         return 0.65
-    elif delta_hours < 168:  # 1 week
+    elif delta_hours < 168:
         return 0.5
-    elif delta_hours < 720:  # 1 month
+    elif delta_hours < 720:
         return 0.3
     else:
         return 0.1

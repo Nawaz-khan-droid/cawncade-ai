@@ -3,7 +3,6 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import Landing from './pages/Landing';
 import Dashboard from './pages/Dashboard';
-import Header from './components/Header';
 
 export default function App() {
   return (
@@ -17,7 +16,7 @@ export default function App() {
         />
         <Routes>
           <Route path="/" element={<Landing />} />
-          <Route path="/dashboard" element={<><Header /><Dashboard /></>} />
+          <Route path="/dashboard" element={<Dashboard />} />
         </Routes>
       </div>
     </Router>

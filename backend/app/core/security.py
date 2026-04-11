@@ -16,17 +16,14 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
-    """Hash a password using bcrypt."""
     return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against its hash."""
     return pwd_context.verify(plain_password, hashed_password)
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """Create a JWT access token."""
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=settings.JWT_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
@@ -34,7 +31,6 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 
 def decode_access_token(token: str) -> dict:
-    """Decode and validate a JWT token. Raises HTTPException if invalid."""
     try:
         payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
         return payload
@@ -47,7 +43,6 @@ def decode_access_token(token: str) -> dict:
 
 
 async def get_current_user_id(credentials: HTTPAuthorizationCredentials = Depends(security_scheme)) -> int:
-    """FastAPI dependency: extract user_id from JWT token."""
     payload = decode_access_token(credentials.credentials)
     user_id = payload.get("sub")
     if user_id is None:
@@ -56,16 +51,10 @@ async def get_current_user_id(credentials: HTTPAuthorizationCredentials = Depend
 
 
 def sanitize_input(text: str) -> str:
-    """Basic input sanitization: strip dangerous patterns."""
     import re
-    # Remove potential prompt injection from user input
     blocked = [
-        "ignore previous instructions",
-        "system prompt",
-        "override",
-        "you are now",
-        "pretend",
-        "jailbreak",
+        "ignore previous instructions", "system prompt", "override",
+        "you are now", "pretend", "jailbreak",
     ]
     sanitized = text
     for pattern in blocked:

@@ -1,45 +1,51 @@
-# CAWNCADE AI - Backend Dependencies
-# Install: pip install -r requirements.txt
+# ═══════════════════════════════════════════════════════════════
+# CAWNCADE AI v3.0 — Production Dependencies
+# Optimized for HuggingFace Spaces Free Tier (2 vCPU, 16GB RAM)
+# ═══════════════════════════════════════════════════════════════
 
-# Web Framework
+# ── Web Framework ──
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 python-multipart==0.0.20
 
-# Database
+# ── Database (SQLite for HF Spaces Persistent Storage) ──
 sqlalchemy==2.0.36
-alembic==1.14.1
 aiosqlite==0.20.0
 
-# Settings
+# ── Settings & Validation ──
 pydantic==2.10.4
 pydantic-settings==2.7.1
+email-validator==2.1.0
 
-# Security
+# ── Security ──
 passlib[bcrypt]==1.7.4
 python-jose[cryptography]==3.3.0
+
+# ── HTTP Client (all outbound requests use this + Webshare proxy) ──
 httpx==0.28.1
 
-# Data Processing
+# ── Data Processing ──
 numpy==2.2.1
 scikit-learn==1.6.1
 feedparser==6.0.11
 beautifulsoup4==4.12.3
 lxml==5.3.0
 
-# ML / Embeddings (lightweight)
-sentence-transformers==3.3.1
+# ── Search: DuckDuckGo (free, unlimited — Tier 4) ──
+duckduckgo-search>=6.0.0
 
-# Caching
-redis==5.2.1
+# ── Search: Tavily (AI-optimized, Tier 2) ──
+tavily-python>=0.3.0
 
-# Monitoring
-opentelemetry-api==1.29.0
-opentelemetry-sdk==1.29.0
-opentelemetry-instrumentation-fastapi==0.50b0
+# ── YouTube Transcripts ──
+youtube-transcript-api>=0.6.0
 
-# Utilities
+# ── Phase 3: LangChain Agent + HuggingFace Endpoint ──
+# CRITICAL: langchain-huggingface enables HuggingFaceEndpoint for Llama 3.1 8B
+langchain>=0.1.0
+langchain-community>=0.0.10
+langchain-huggingface>=0.0.1
+huggingface-hub>=0.20.0
+
+# ── Utilities ──
 python-dotenv==1.0.1
-
-#Email
-email-validator
