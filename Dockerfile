@@ -49,4 +49,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD python -c "import httpx; httpx.get('http://localhost:7860/api/health', timeout=5)" || exit 1
 
 # Start server on port 7860
+# We use 'app.main:app' because /app/app/main.py exists after copying
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860", "--workers", "1"]

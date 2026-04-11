@@ -1,11 +1,15 @@
-const API_BASE = '/api/v1';
+// Change this to match the backend prefix exactly
+const API_BASE = '/api/v1'; 
 
 class CAWNCADEAPI {
   constructor() {
+    // If running on HF, we use relative paths so the browser 
+    // automatically prepends the Space's URL.
     this.baseUrl = API_BASE;
   }
 
   async analyze({ input_text, input_type = 'auto', max_sources = 10 }) {
+    // This will call /api/v1/analysis/analyze
     const response = await fetch(`${this.baseUrl}/analysis/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -19,6 +23,7 @@ class CAWNCADEAPI {
   }
 
   async analyzeImage({ image_base64 }) {
+    // This will call /api/v1/analysis/analyze/image
     const response = await fetch(`${this.baseUrl}/analysis/analyze/image`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -41,6 +46,7 @@ class CAWNCADEAPI {
   }
 
   async healthCheck() {
+    // This calls the health endpoint inside the V1 prefix
     const response = await fetch(`${this.baseUrl}/analysis/health`);
     return response.json();
   }
