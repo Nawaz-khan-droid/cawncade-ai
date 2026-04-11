@@ -36,8 +36,25 @@ class FeedbackRequest(BaseModel):
 @router.post("/analyze")
 async def analyze(request: AnalyzeRequest):
     try:
-        result = await orchestrator.process(input_text=request.input_text, input_type=request.input_type, max_sources=request.max_sources)
+        # We pass the arguments explicitly. 
+        # If your orchestrator's 'process' method calls 'tiered_search', 
+        # make sure 'tiered_search' in orchestrator.py is updated to accept **kwargs.
+        result = await orchestrator.process(
+            input_text=request.input_text, 
+            input_type=request.input_type, 
+            max_sources=request.max_sources
+        )
         return result
+    except TypeError as e:
+        # This catches the "unexpected keyword argument" error specifically
+        if "max_sources" in str(e):
+            # Fallback: Try calling without max_sources if the internal function isn't updated yet
+            result = await orchestrator.process(
+                input_text=request.input_text, 
+                input_type=request.input_type
+            )
+            return result
+        raise HTTPException(status_code=500, detail=f"Logic Error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

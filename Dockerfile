@@ -11,7 +11,7 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install system dependencies for AI/Vision
-# Update this line in Stage 2
+# Stage 2 - Use this instead of the old mesa-glx
 RUN apt-get update && apt-get install -y \
     libgl1 \
     libglib2.0-0 \

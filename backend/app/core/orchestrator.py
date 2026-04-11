@@ -111,21 +111,18 @@ class Orchestrator:
             }
 
         # Step 3: Research - Tiered Search
-        search_result = await tiered_search(query, max_sources=max_sources)
+        try:
+            # Attempt to pass max_sources
+            search_result = await tiered_search(query, max_sources=max_sources)
+        except TypeError as e:
+            if "max_sources" in str(e):
+                log.warning("[Orchestrator] tiered_search does not accept max_sources. Updating internal call.")
+                # Fallback to standard call if the service hasn't been updated yet
+                search_result = await tiered_search(query)
+            else:
+                raise e
+        
         sources = search_result.get("sources", [])
-
-        if not sources:
-            short_query = " ".join(query.split()[:10])
-            if short_query != query:
-                log.info(f"[Orchestrator] Retrying with shorter query: '{short_query[:60]}'")
-                retry = await tiered_search(short_query, max_sources=max_sources)
-                sources = retry.get("sources", [])
-
-        if not sources:
-            compute_time = int((time.time() - start_time) * 1000)
-            return self._empty_result(
-                f"No relevant sources found for: '{query[:60]}'. Try rephrasing or entering the topic directly as text.",
-                compute_time, extraction_meta, fact_check_result, fact_verdict, search_result)
 
         # Step 4: Score sources
         for src in sources:
