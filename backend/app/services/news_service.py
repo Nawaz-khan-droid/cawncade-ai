@@ -227,13 +227,42 @@ async def search_google_news_rss(query: str) -> list:
 # ═══════════════════════════════════════════════════════════════
 # TIER 5b: GDELT
 # ═══════════════════════════════════════════════════════════════
-async def search_gdelt(query: str) -> list:
-    url = "https://api.gdeltproject.org/api/v2/doc/doc"
-    params = {"mode": "ArticleList", "maxrecords": "10", "format": "json", "query": query}
-    async with _get_httpx_client(15.0) as client:
-        resp = await client.get(url, params=params)
-        data = resp.json()
-        return [{"url": a["url"], "title": a["title"], "snippet": a["seendate"], "source_name": "GDELT", "channel": "gdelt", "retrieval_tier": "tier_5"} for a in data.get("articles", [])]
+async def search_gdelt(query: str):
+    """
+    Search GDELT Project's Context API with strict JSON safety.
+    """
+    # 1. Prepare the URL and Proxy
+    encoded_query = urllib.parse.quote(query)
+    url = f"https://api.gdeltproject.org/api/v2/context/context?query={encoded_query}&mode=artlist&format=json"
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # GDELT can be picky; using standard headers is safer
+            headers = {"User-Agent": "Mozilla/5.0"} 
+            response = await client.get(url, headers=headers)
+            
+            # 2. Check for empty content BEFORE parsing JSON
+            if not response.text or not response.text.strip():
+                log.warning("[GDELT] Received empty response body")
+                return []
+
+            # 3. Handle HTTP errors before JSON parsing
+            if response.status_code != 200:
+                log.error(f"[GDELT] HTTP {response.status_code} error")
+                return []
+
+            # 4. Final safety check for JSON formatting
+            try:
+                data = response.json()
+                # GDELT results are usually in an 'articles' list
+                return data.get("articles", [])
+            except ValueError:
+                log.error(f"[GDELT] Invalid JSON received: {response.text[:100]}")
+                return []
+
+    except Exception as e:
+        log.error(f"[GDELT] Search failed: {e}")
+        return []
 
 # ═══════════════════════════════════════════════════════════════
 # MAIN ORCHESTRATION — FIX APPLIED HERE
