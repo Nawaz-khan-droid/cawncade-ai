@@ -2,27 +2,97 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  body {
+    @apply bg-surface-950 text-slate-200;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
 /* Custom styles */
 @layer components {
   .glass-card {
     @apply bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl;
   }
+  
   .btn-primary {
     @apply bg-brand-500 hover:bg-brand-600 text-white font-medium rounded-xl transition-all duration-200 hover:shadow-lg hover:shadow-brand-500/25;
   }
+
+  .btn-secondary {
+    @apply bg-white/5 hover:bg-white/10 text-white border border-white/10 font-medium rounded-xl transition-all duration-200;
+  }
+
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-brand-400 to-cyan-400 font-bold;
+  }
 }
 
-/* Animations */
+/* --- GOOGLE CUSTOM SEARCH (CSE) OVERRIDES --- */
+/* This makes the Google search bar match your Cyberpunk theme */
+
+.gsc-control-cse {
+  background-color: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  font-family: inherit !important;
+}
+
+.gsc-input-box {
+  background-color: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 12px !important;
+  overflow: hidden;
+}
+
+input.gsc-input {
+  background: none !important;
+  color: #e2e8f0 !important; /* slate-200 */
+  padding-left: 10px !important;
+}
+
+.gsc-search-button-v2 {
+  background-color: #3b82f6 !important; /* brand-500 */
+  border-radius: 0 10px 10px 0 !important;
+  border: none !important;
+  padding: 10px 16px !important;
+  margin-top: 0 !important;
+}
+
+.gsc-search-button-v2:hover {
+  background-color: #2563eb !important; /* brand-600 */
+}
+
+/* Hide branding and unnecessary elements */
+.gcsc-branding, .gsc-adBlock {
+  display: none !important;
+}
+
+/* --- ANIMATIONS & UI --- */
+
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
 .animate-fade-in {
   animation: fade-in 0.5s ease-out;
 }
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+/* Custom Scrollbar */
+::-webkit-scrollbar { 
+  width: 6px; 
+}
+
+::-webkit-scrollbar-track { 
+  background: transparent; 
+}
+
+::-webkit-scrollbar-thumb { 
+  background: rgba(255, 255, 255, 0.1); 
+  border-radius: 3px; 
+}
+
+::-webkit-scrollbar-thumb:hover { 
+  background: rgba(255, 255, 255, 0.2); 
+}
