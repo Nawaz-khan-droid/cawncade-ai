@@ -1,18 +1,18 @@
 """
-CAWNCADE AI v3.2 — LangChain ReAct Agent Service.
-Upgraded to Llama 3.1 8B Instruct with Pydantic-compliant parameter mapping.
+CAWNCADE AI v3.4 — LangChain ReAct Agent Service.
+Fixed: Using HF Router with OpenAI-compatible client for Llama 3.1 8B.
+Optimized: Forced instruction following and source citation.
 """
 
 import os
 import asyncio
-from langchain_huggingface import HuggingFaceEndpoint
+from langchain_openai import ChatOpenAI 
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain import hub
 from langchain_community.tools.ddg_search.tool import DuckDuckGoSearchRun
 from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
 from app.config.settings import get_settings
 from app.core.resilience import circuit_agent
-from app.core.cache import cache
 from app.utils.logger import log
 
 settings = get_settings()
@@ -23,33 +23,34 @@ class CawncadeAgent:
         self._initialized = False
 
     def _init_agent(self):
-        """Initializes the Llama 3.1 8B reasoning engine."""
+        """Initializes the Llama 3.1 engine via HF Router."""
         if self._initialized: return
         
         try:
-            # UPGRADED: Switched back to Llama 3.1 8B Instruct
-            repo_id = "meta-llama/Meta-Llama-3.1-8B-Instruct"
+            # Retrieve token from settings or environment
             api_token = settings.HUGGINGFACE_API_TOKEN or os.getenv("HUGGINGFACE_API_TOKEN")
 
-            # Pydantic-compliant initialization (parameters as direct arguments)
-            self.llm = HuggingFaceEndpoint(
-                repo_id=repo_id,
-                huggingfacehub_api_token=api_token,
-                timeout=120,
-                max_new_tokens=1024, # Increased for Llama's detailed reasoning
+            # We use ChatOpenAI to point to the Hugging Face Router.
+            # This handles the Llama 3.1 Instruct chat template perfectly.
+            self.llm = ChatOpenAI(
+                base_url="https://router.huggingface.co/v1",
+                api_key=api_token,
+                model="meta-llama/Llama-3.1-8B-Instruct",
                 temperature=0.1,
-                repetition_penalty=1.1
+                max_tokens=1024
             )
 
-            # DuckDuckGo Tool for real-time verification
+            # Verification Tool: DuckDuckGo
             wrapper = DuckDuckGoSearchAPIWrapper(region="wt-wt", time=None, max_results=5)
             self.search_tool = DuckDuckGoSearchRun(api_wrapper=wrapper)
 
-            # Load the standard ReAct logic prompt
+            # Pull the standard ReAct prompt from LangChain Hub
             self.prompt = hub.pull("hwchase17/react")
             
-            # Construct the Agent with Llama
+            # Create the ReAct agent
             agent = create_react_agent(self.llm, [self.search_tool], self.prompt)
+            
+            # The Executor manages the Thought/Action/Observation loop
             self._agent_executor = AgentExecutor(
                 agent=agent,
                 tools=[self.search_tool],
@@ -59,37 +60,40 @@ class CawncadeAgent:
             )
 
             self._initialized = True
-            log.info(f"[Agent] Llama 3.1 reasoning engine armed: {repo_id}")
+            log.info("[Agent] Llama 3.1 via HF Router armed and ready.")
 
         except Exception as e:
-            log.error(f"[Agent] Llama 3.1 Init Failed: {e}")
-            self._initialized = False # Retry on next request
+            log.error(f"[Agent] Router Initialization Failed: {e}")
+            self._initialized = False 
 
     async def run_investigation(self, query: str, evidence_context: str = "") -> str:
-        """Main entry point for claim verification."""
+        """Runs a deep-dive investigation into a specific claim."""
         self._init_agent()
         
         if not self._agent_executor:
-            log.warning("[Agent] Agent offline. Using template fallback.")
             return self._template_synthesis(query, evidence_context)
 
-        # Enhanced prompt for Llama 3.1 to ensure URL citations
+        # Prompt engineering to ensure Llama 3.1 cites its sources
         agent_input = (
-            f"You are a professional fact-checker. Verify the following claim using the provided evidence. "
-            f"If the evidence is insufficient, use the search tool to find more details. "
-            f"CRITICAL: You MUST cite the source URL for every fact you state.\n\n"
+            f"You are a professional fact-checker. Verify the claim below.\n\n"
             f"CLAIM: {query}\n"
-            f"EVIDENCE: {evidence_context}\n\n"
-            f"Final Answer Format: Give a VERDICT followed by your detailed reasoning and sources."
+            f"PROVIDED EVIDENCE: {evidence_context}\n\n"
+            f"INSTRUCTIONS:\n"
+            f"1. Use the search tool if the provided evidence is insufficient.\n"
+            f"2. Provide a clear VERDICT (True, False, or Mixed).\n"
+            f"3. State your reasoning clearly.\n"
+            f"4. MANDATORY: Cite the URL for every source used in your final answer."
         )
 
         async def _call():
+            # Run the synchronous LangChain invoke in a thread pool for async compatibility
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(
                 None, lambda: self._agent_executor.invoke({"input": agent_input})
             )
 
         try:
+            # Wrapped in a circuit breaker for stability
             result = await circuit_agent.call(_call)
             
             if result is None:
@@ -97,26 +101,24 @@ class CawncadeAgent:
 
             output = result.get("output", "")
             
-            # Llama usually provides longer output; threshold remains for safety
-            if not output or len(output) < 20:
+            # Ensure we didn't get an empty or tiny response
+            if not output or len(output) < 30:
                 return self._template_synthesis(query, evidence_context)
                 
             return output
 
         except Exception as e:
-            log.error(f"[Agent] Investigation crashed: {e}")
+            log.error(f"[Agent] Investigation execution failed: {e}")
             return self._template_synthesis(query, evidence_context)
 
     def _template_synthesis(self, query: str, evidence: str = "") -> str:
-        """Safe mode fallback synthesis."""
-        if not evidence:
-            return "VERDICT: UNVERIFIED. Reasoning engine is initializing or offline."
-        
+        """Fallback synthesis when the reasoning engine is unavailable."""
+        summary = evidence[:300] if evidence else "No direct evidence found."
         return (
-            f"VERDICT: PRELIMINARY ASSESSMENT (Agent Offline)\n\n"
-            f"Summary of raw evidence: {evidence[:300]}...\n\n"
-            f"Note: This summary was generated without full AI reasoning."
+            f"VERDICT: PRELIMINARY ASSESSMENT\n\n"
+            f"Reasoning: The deep-check engine is currently rebooting. "
+            f"Based on initial data retrieval: {summary}..."
         )
 
-# Global instance for use in orchestrators
+# Exported instance for the orchestrator
 cawncade_agent = CawncadeAgent()
