@@ -1,7 +1,7 @@
 """
-CAWNCADE AI v3.4 — LangChain ReAct Agent Service.
-Fixed: Using HF Router with OpenAI-compatible client for Llama 3.1 8B.
-Optimized: Forced instruction following and source citation.
+CAWNCADE AI v3.5 — LangChain ReAct Agent Service.
+Refined: High-precision DuckDuckGo News Search integration.
+Fixed: Removed general web noise (jewelry/videos) by forcing 'news' source.
 """
 
 import os
@@ -23,25 +23,30 @@ class CawncadeAgent:
         self._initialized = False
 
     def _init_agent(self):
-        """Initializes the Llama 3.1 engine via HF Router."""
+        """Initializes the Llama 3.1 engine via HF Router with News-First Search."""
         if self._initialized: return
         
         try:
             # Retrieve token from settings or environment
             api_token = settings.HUGGINGFACE_API_TOKEN or os.getenv("HUGGINGFACE_API_TOKEN")
 
-            # We use ChatOpenAI to point to the Hugging Face Router.
-            # This handles the Llama 3.1 Instruct chat template perfectly.
+            # Temperature set to 0 for strict fact-checking (no creative wandering)
             self.llm = ChatOpenAI(
                 base_url="https://router.huggingface.co/v1",
                 api_key=api_token,
                 model="meta-llama/Llama-3.1-8B-Instruct",
-                temperature=0.1,
+                temperature=0,
                 max_tokens=1024
             )
 
-            # Verification Tool: DuckDuckGo
-            wrapper = DuckDuckGoSearchAPIWrapper(region="wt-wt", time=None, max_results=5)
+            # FINE-TUNED NEWS SEARCH: 
+            # We force source="news" to prevent shopping/jewelry/video hallucinations.
+            wrapper = DuckDuckGoSearchAPIWrapper(
+                region="wt-wt", 
+                time="m", # Focus on the current month for 2026 news
+                max_results=5,
+                source="news" 
+            )
             self.search_tool = DuckDuckGoSearchRun(api_wrapper=wrapper)
 
             # Pull the standard ReAct prompt from LangChain Hub
@@ -56,33 +61,33 @@ class CawncadeAgent:
                 tools=[self.search_tool],
                 verbose=True,
                 handle_parsing_errors=True,
-                max_iterations=5 
+                max_iterations=4 
             )
 
             self._initialized = True
-            log.info("[Agent] Llama 3.1 via HF Router armed and ready.")
+            log.info("[Agent] Llama 3.1 + DDG News Engine armed and ready.")
 
         except Exception as e:
-            log.error(f"[Agent] Router Initialization Failed: {e}")
+            log.error(f"[Agent] Engine Initialization Failed: {e}")
             self._initialized = False 
 
     async def run_investigation(self, query: str, evidence_context: str = "") -> str:
-        """Runs a deep-dive investigation into a specific claim."""
+        """Runs a deep-dive investigation into a specific claim using news archives."""
         self._init_agent()
         
         if not self._agent_executor:
             return self._template_synthesis(query, evidence_context)
 
-        # Prompt engineering to ensure Llama 3.1 cites its sources
+        # STRICT INSTRUCTION PROMPT: Forces the LLM to filter for reputable news.
         agent_input = (
-            f"You are a professional fact-checker. Verify the claim below.\n\n"
-            f"CLAIM: {query}\n"
+            f"You are a professional fact-checker. Verify this NEWS CLAIM: {query}\n\n"
             f"PROVIDED EVIDENCE: {evidence_context}\n\n"
             f"INSTRUCTIONS:\n"
-            f"1. Use the search tool if the provided evidence is insufficient.\n"
-            f"2. Provide a clear VERDICT (True, False, or Mixed).\n"
-            f"3. State your reasoning clearly.\n"
-            f"4. MANDATORY: Cite the URL for every source used in your final answer."
+            f"1. Use the search tool to find verified news reports from 2026.\n"
+            f"2. IGNORE jewelry brands, shopping sites, or unrelated viral videos.\n"
+            f"3. Focus on reputable outlets (e.g., Reuters, PTI, The Hindu, Livemint).\n"
+            f"4. Provide a clear VERDICT (True, False, or Mixed).\n"
+            f"5. MANDATORY: Cite the full source URL for every fact used in your final answer."
         )
 
         async def _call():
@@ -101,9 +106,9 @@ class CawncadeAgent:
 
             output = result.get("output", "")
             
-            # Ensure we didn't get an empty or tiny response
+            # Ensure we didn't get an empty response
             if not output or len(output) < 30:
-                return self._template_synthesis(query, evidence_context)
+                return "No conclusive evidence found in news archives to verify this claim."
                 
             return output
 
@@ -116,8 +121,8 @@ class CawncadeAgent:
         summary = evidence[:300] if evidence else "No direct evidence found."
         return (
             f"VERDICT: PRELIMINARY ASSESSMENT\n\n"
-            f"Reasoning: The deep-check engine is currently rebooting. "
-            f"Based on initial data retrieval: {summary}..."
+            f"Reasoning: The deep-check engine is currently adjusting search parameters. "
+            f"Initial data snippet: {summary}..."
         )
 
 # Exported instance for the orchestrator
