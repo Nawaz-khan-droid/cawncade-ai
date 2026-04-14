@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     AGENT_MODEL: str = "meta-llama/Meta-Llama-3.1-8B-Instruct"
     AGENT_MAX_TOKENS: int = 1024
     AGENT_TEMPERATURE: float = 0.1
-    AGENT_MAX_ITERATIONS: int = 5
+    AGENT_MAX_ITERATIONS: int = 15
 
     # ── Vision (Visual Lens — HF Inference API) ──
     VISION_MODEL: str = "prithivMLmods/AI-vs-Deepfake-vs-Real-Siglip2"

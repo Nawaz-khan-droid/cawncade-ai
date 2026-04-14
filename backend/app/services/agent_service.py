@@ -381,7 +381,16 @@ class CawncadeChatAgent:
             # Our prompt hwchase17/react natively takes `input` as string. 
             # We append the history string to the input securely.
             history_str = "\n".join([f"{type(m).__name__}: {m.content}" for m in history[-5:]])
-            chat_input = f"CHAT HISTORY:\n{history_str}\n\nUSER NEW MESSAGE: {user_input}"
+            
+            system_instruction = (
+                "SYSTEM: You are CAWNCADE, an AI research assistant. "
+                "If the user asks a conversational question (e.g. 'what can you do', 'which llm do you use'), "
+                "you MUST immediately answer directly using 'Final Answer: [your response]'. "
+                "If they ask you to research, use your tools. "
+                "Always prioritize a Direct Answer over Perfect Research. Do not over-think or loop endlessly."
+            )
+            
+            chat_input = f"{system_instruction}\n\nCHAT HISTORY:\n{history_str}\n\nUSER NEW MESSAGE: {user_input}"
             
             response = await loop.run_in_executor(
                 None,
