@@ -221,48 +221,90 @@ async def search_google_news_rss(query: str) -> list:
 
     return await circuit_google_news.call(_call) or []
 
-async def search_gdelt(query: str):
-    safe_query = urllib.parse.quote(query[:300])
-    url = f"https://api.gdeltproject.org/api/v2/context/context?query={safe_query}&mode=artlist&format=json"
+# ═══════════════════════════════════════════════════════════════
+# NEW TIER 1: Serper.dev (Reliable Google Search Proxy)
+# ═══════════════════════════════════════════════════════════════
+async def search_serper(query: str) -> list:
+    if not settings.SERPER_API_KEY: return []
+    safe_query = query[:300]
     
     async def _call():
-        async with _get_httpx_client(10.0) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            data = response.json()
-            return data.get("articles", [])
-    return await circuit_gdelt.call(_call) or []
+        async with _get_httpx_client(15.0) as client:
+            headers = {"X-API-KEY": settings.SERPER_API_KEY, "Content-Type": "application/json"}
+            payload = {"q": safe_query, "num": 5}
+            resp = await client.post("https://google.serper.dev/search", headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+            return [{
+                "url": r.get("link", ""),
+                "title": r.get("title", ""),
+                "snippet": r.get("snippet", ""),
+                "source_name": r.get("source", "Serper/Google"),
+                "channel": "serper",
+                "retrieval_tier": "tier_1"
+            } for r in data.get("organic", [])]
+    return await circuit_google_search.call(_call) or []
 
 # ═══════════════════════════════════════════════════════════════
-# MAIN ORCHESTRATION
+# VISUAL LENS: Serper.dev Lens
+# ═══════════════════════════════════════════════════════════════
+async def search_serper_lens(image_url: str):
+    if not settings.SERPER_API_KEY: return {}
+    async def _call():
+        async with _get_httpx_client(15.0) as client:
+            headers = {"X-API-KEY": settings.SERPER_API_KEY, "Content-Type": "application/json"}
+            payload = {"url": image_url}
+            resp = await client.post("https://google.serper.dev/lens", headers=headers, json=payload)
+            resp.raise_for_status()
+            return resp.json()
+    return await circuit_google_search.call(_call) or {}
+
+# ═══════════════════════════════════════════════════════════════
+# NEW TIER 2: You.com (AI-Powered Web Search)
+# ═══════════════════════════════════════════════════════════════
+async def search_you_com(query: str) -> list:
+    if not settings.YOU_API_KEY: return []
+    safe_query = query[:300]
+    
+    async def _call():
+        async with _get_httpx_client(15.0) as client:
+            headers = {"X-API-Key": settings.YOU_API_KEY}
+            params = {"query": safe_query, "num_web_results": 5}
+            resp = await client.get("https://api.ydc-index.io/search", headers=headers, params=params)
+            resp.raise_for_status()
+            data = resp.json()
+            return [{
+                "url": r.get("url", ""),
+                "title": r.get("title", ""),
+                "snippet": r.get("snippet", ""),
+                "source_name": r.get("name", "You.com"),
+                "channel": "you_com",
+                "retrieval_tier": "tier_2"
+            } for r in data.get("hits", [])]
+    return await circuit_tavily.call(_call) or []
+
+# ═══════════════════════════════════════════════════════════════
+# RESCUE PLAN ORCHESTRATION 
 # ═══════════════════════════════════════════════════════════════
 async def tiered_search(query: str, max_sources: int = 10, **kwargs) -> dict:
-    log.info(f"[Search] Executing tiered search: '{query[:60]}' (limit: {max_sources})")
+    log.info(f"[Search] Executing Rescue Plan search: '{query[:60]}'")
 
-    # SWAPPED ORDER: Tier 2 is now DDG, Tier 4 is Tavily
+    # THE NEW LADDER: Most reliable APIs first.
     tasks = [
-        search_google_custom(query, trusted_only=True), # Tier 1
-        search_duckduckgo(query),                      # Tier 2 (SWAPPED UP)
-        search_newsdata(query),                        # Tier 3
-        search_newsapi(query),                         # Tier 3
-        search_tavily(query, trusted_only=False),      # Tier 4 (SWAPPED DOWN)
-        search_google_news_rss(query),                 # Tier 5
-        search_gdelt(query),                           # Tier 5
+        search_serper(query),                           # Tier 1 (New, highly reliable)
+        search_tavily(query, trusted_only=False),       # Tier 2 (Proven to work)
+        search_you_com(query),                          # Tier 2 (New, highly reliable)
+        search_newsdata(query),                         # Tier 3 (Proven to work)
+        search_google_news_rss(query),                  # Tier 4 (Free, reliable)
+        search_google_custom(query, trusted_only=True), # Tier 5 (IP bans likely)
+        search_duckduckgo(query),                       # Tier 5 (Last resort, won't crash if 0)
     ]
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
     all_sources = []
     tier_stats = {}
     
-    tier_names = [
-        "tier_1_google", 
-        "tier_2_ddg", 
-        "tier_3_newsdata", 
-        "tier_3_newsapi", 
-        "tier_4_tavily", 
-        "tier_5_rss", 
-        "tier_5_gdelt"
-    ]
+    tier_names = ["serper", "tavily", "you_com", "newsdata", "rss", "google", "duckduckgo"]
 
     for i, result in enumerate(results):
         name = tier_names[i]
@@ -292,7 +334,8 @@ async def tiered_search(query: str, max_sources: int = 10, **kwargs) -> dict:
     }
 
 async def verify_against_trusted(query: str, max_results: int = 5) -> list:
-    gcs_results = await search_google_custom(query, trusted_only=True)
-    if gcs_results: return gcs_results[:max_results]
+    # Use serper proxy to bypass IP bans
+    serper_results = await search_serper(query)
+    if serper_results: return serper_results[:max_results]
     tavily_results = await search_tavily(query, trusted_only=True)
     return tavily_results[:max_results] if tavily_results else []

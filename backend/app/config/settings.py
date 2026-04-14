@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     TAVILY_API_KEY: str = ""               # HF Secret: TAVILY_API_KEY
     NEWS_API_KEY: str = ""                 # HF Secret: NEWS_API_KEY
     NEWSDATA_API_KEY: str = ""             # HF Secret: NEWSDATA_API_KEY
+    SERPER_API_KEY: str = ""               # HF Secret: SERPER_API_KEY
+    YOU_API_KEY: str = ""                  # HF Secret: YOU_API_KEY
 
     # ── Google APIs — ONE KEY FOR FIVE SERVICES ──
     # The single GOOGLE_API_KEY powers:

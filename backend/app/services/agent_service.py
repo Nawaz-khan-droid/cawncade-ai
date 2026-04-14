@@ -79,8 +79,61 @@ def process_url(url: str) -> str:
         )
         return f"Could not retrieve article: HTTP {e.response.status_code} error."
     except Exception as e:
-        log.warning(f"[process_url] ⚠️ Failed for {url[:80]}: {e}")
         return f"Could not retrieve article content: {str(e)[:200]}"
+
+@tool
+def serper_search(query: str) -> str:
+    """
+    Highly reliable Google search proxy via Serper.dev.
+    Use this immediately if DuckDuckGo fails or returns 0 results.
+    """
+    from app.config.settings import get_settings
+    import requests
+    
+    settings = get_settings()
+    if not settings.SERPER_API_KEY: return "Serper search disabled."
+    try:
+        resp = requests.post(
+            "https://google.serper.dev/search",
+            headers={"X-API-KEY": settings.SERPER_API_KEY, "Content-Type": "application/json"},
+            json={"q": query[:300], "num": 5},
+            timeout=15.0
+        )
+        data = resp.json().get("organic", [])
+        return str([{
+            "title": r.get("title", ""),
+            "snippet": r.get("snippet", ""),
+            "url": r.get("link", "")
+        } for r in data]) if data else "No results found from Serper search."
+    except Exception as e:
+        return f"Serper search failed: {e}"
+
+@tool
+def you_search(query: str) -> str:
+    """
+    AI-Powered Web Search via You.com.
+    Use this to dig deeper for context if early searches are sparse.
+    """
+    from app.config.settings import get_settings
+    import requests
+    
+    settings = get_settings()
+    if not settings.YOU_API_KEY: return "You.com search disabled."
+    try:
+        resp = requests.get(
+            "https://api.ydc-index.io/search",
+            headers={"X-API-KEY": settings.YOU_API_KEY},
+            params={"query": query[:300], "num_web_results": 5},
+            timeout=15.0
+        )
+        data = resp.json().get("hits", [])
+        return str([{
+            "title": r.get("title", ""),
+            "snippet": r.get("snippet", ""),
+            "url": r.get("url", "")
+        } for r in data]) if data else "No results found from You.com search."
+    except Exception as e:
+        return f"You.com search failed: {e}"
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -120,7 +173,7 @@ class CawncadeAgent:
                 "Returns titles, snippets, and URLs from reputable news sources."
             ),
         )
-        built_tools = [ddg_tool, process_url]
+        built_tools = [ddg_tool, process_url, serper_search, you_search]
 
         # ── Tool 3: Tavily AI Search (Conditional Backup) ──────
         # Preserves your 'backup' intent — only active when key is present.
@@ -241,11 +294,11 @@ class CawncadeAgent:
             f"3. If a search result URL looks relevant but its SNIPPET IS TOO SHORT, "
             f"   use the process_url tool to read the FULL article text.\n"
             f"   Format: process_url('https://example.com/article-url')\n"
-            f"4. If DuckDuckGo returns poor, noisy, or irrelevant results, "
-            f"   switch to tavily_news_search as your backup.\n"
-            f"5. Prioritize reputable outlets: Reuters, AP News, BBC, PTI, The Hindu, Livemint.\n"
-            f"6. Issue a clear VERDICT: True, False, or Mixed.\n"
-            f"7. MANDATORY: Cite the full source URL for every fact in your final answer."
+            f"4. You have multiple search tools. If DuckDuckGo returns no results, immediately try serper_search or tavily_news_search.\n"
+            f"5. You may also use you_search for AI-powered wide-web context gathering.\n"
+            f"6. Prioritize reputable outlets: Reuters, AP News, BBC, PTI, The Hindu, Livemint.\n"
+            f"7. Issue a clear VERDICT: True, False, or Mixed.\n"
+            f"8. MANDATORY: Cite the full source URL for every fact in your final answer."
         )
 
         async def _call():

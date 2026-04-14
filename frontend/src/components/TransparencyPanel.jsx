@@ -5,15 +5,14 @@ export default function TransparencyPanel({ tierStats, factCheck, extraction, in
   if (!tierStats && !factCheck && !extraction) return null;
 
   const getTierLabel = (key) => {
-    // UPDATED: Keys now match news_service.py tiered_search results
     const labels = {
-      tier_1_google: { label: 'Google CSE (Trusted Garden)', color: 'text-green-400' },
-      tier_2_ddg: { label: 'DuckDuckGo (News Pivot)', color: 'text-orange-400' },
-      tier_3_newsdata: { label: 'NewsData.io', color: 'text-purple-400' },
-      tier_3_newsapi: { label: 'NewsAPI.org', color: 'text-purple-400' },
-      tier_4_tavily: { label: 'Tavily (Deep Research)', color: 'text-blue-400' },
-      tier_5_rss: { label: 'Google News RSS', color: 'text-gray-400' },
-      tier_5_gdelt: { label: 'GDELT Global Monitor', color: 'text-gray-400' },
+      serper: { label: 'Serper.dev (Google Proxy)', color: 'text-green-400' },
+      tavily: { label: 'Tavily (Deep Research)', color: 'text-blue-400' },
+      you_com: { label: 'You.com (AI Search)', color: 'text-teal-400' },
+      newsdata: { label: 'NewsData.io', color: 'text-purple-400' },
+      rss: { label: 'Google News RSS', color: 'text-gray-400' },
+      google: { label: 'Google CSE', color: 'text-gray-500' },
+      duckduckgo: { label: 'DuckDuckGo', color: 'text-orange-400' },
     };
     return labels[key] || { label: key, color: 'text-gray-500' };
   };
