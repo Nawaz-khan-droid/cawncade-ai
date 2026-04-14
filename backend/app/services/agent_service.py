@@ -107,7 +107,6 @@ class CawncadeAgent:
             region="wt-wt",
             time="m",          # Last 30 days — relevant 2026 news only
             max_results=5,
-            source="news",     # ← KEY: forces news results only
         )
         ddg_tool = DuckDuckGoSearchRun(
             api_wrapper=wrapper,
@@ -233,7 +232,7 @@ class CawncadeAgent:
             f"{evidence_context}\n\n"
             f"YOUR AVAILABLE TOOLS:\n{tool_manifest}\n\n"
             f"STEP-BY-STEP INSTRUCTIONS:\n"
-            f"1. Use duckduckgo_search to find verified news reports from 2026.\n"
+            f"1. Use duckduckgo_search to find verified news reports from 2026. Append 'latest news' to EVERY search query you generate.\n"
             f"2. IGNORE results from jewelry brands, shopping sites, or viral videos.\n"
             f"3. If a search result URL looks relevant but its SNIPPET IS TOO SHORT, "
             f"   use the process_url tool to read the FULL article text.\n"

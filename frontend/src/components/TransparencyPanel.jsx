@@ -8,10 +8,10 @@ export default function TransparencyPanel({ tierStats, factCheck, extraction, in
     // UPDATED: Keys now match news_service.py tiered_search results
     const labels = {
       tier_1_google: { label: 'Google CSE (Trusted Garden)', color: 'text-green-400' },
-      tier_2_tavily: { label: 'Tavily AI Search', color: 'text-blue-400' },
+      tier_2_ddg: { label: 'DuckDuckGo (News Pivot)', color: 'text-orange-400' },
       tier_3_newsdata: { label: 'NewsData.io', color: 'text-purple-400' },
       tier_3_newsapi: { label: 'NewsAPI.org', color: 'text-purple-400' },
-      tier_4_ddg: { label: 'DuckDuckGo', color: 'text-orange-400' },
+      tier_4_tavily: { label: 'Tavily (Deep Research)', color: 'text-blue-400' },
       tier_5_rss: { label: 'Google News RSS', color: 'text-gray-400' },
       tier_5_gdelt: { label: 'GDELT Global Monitor', color: 'text-gray-400' },
     };
