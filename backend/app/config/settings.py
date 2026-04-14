@@ -6,8 +6,8 @@ Uses pydantic-settings for type-safe env loading.
 HuggingFace Space Configuration:
   Variables (Public): ENVIRONMENT, GOOGLE_CSE_ID, DATABASE_URL, LOG_LEVEL
   Secrets (Private): HUGGINGFACE_API_TOKEN, JWT_SECRET_KEY, GOOGLE_API_KEY,
-                     TAVILY_API_KEY, NEWSDATA_API_KEY, NEWS_API_KEY,
-                     WEBSHARE_PROXY_URL, WEBSHARE_PROXY_USER, WEBSHARE_PROXY_PASS
+  Secrets (Private): HUGGINGFACE_API_TOKEN, JWT_SECRET_KEY, GOOGLE_API_KEY,
+                     TAVILY_API_KEY, NEWSDATA_API_KEY, NEWS_API_KEY
 """
 from pydantic_settings import BaseSettings
 from functools import lru_cache
@@ -69,11 +69,6 @@ class Settings(BaseSettings):
     #   5. Google Cloud Storage  (SQLite DB backup, JSON API)
     GOOGLE_API_KEY: str = ""               # HF Secret: GOOGLE_API_KEY
     GOOGLE_CSE_ID: str = ""                # HF Variable: GOOGLE_CSE_ID
-
-    # ── Webshare Rotating Proxy ──
-    WEBSHARE_PROXY_URL: str = ""           # HF Secret: WEBSHARE_PROXY_URL
-    WEBSHARE_PROXY_USER: str = ""          # HF Secret: WEBSHARE_PROXY_USER
-    WEBSHARE_PROXY_PASS: str = ""          # HF Secret: WEBSHARE_PROXY_PASS
 
     # ── Google Cloud Storage (DB Backup — uses same GOOGLE_API_KEY) ──
     GCS_BUCKET_NAME: str = ""              # Optional: set as Variable or Secret

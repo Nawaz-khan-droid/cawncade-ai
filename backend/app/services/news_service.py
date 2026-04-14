@@ -1,12 +1,12 @@
 """
-CAWNCADE AI v3.0 — News Service (Phase 4 Production).
+CAWNCADE AI v3.1 — News Service (Phase 4 Production).
 Tiered multi-source search with Webshare proxy, circuit breaker, and caching.
 
 Search Priority (Intelligence Ladder):
   Tier 1: Google Custom Search -> Trusted 50-Site Walled Garden (precision)
-  Tier 2: Tavily -> AI-enhanced search with include_domains (quality)
+  Tier 2: DuckDuckGo -> Unlimited fallback (speed/reliability)
   Tier 3: NewsData.io / NewsAPI.org (breadth)
-  Tier 4: DuckDuckGo via LangChain wrapper (unlimited fallback)
+  Tier 4: Tavily -> AI-enhanced search (preserved credits)
   Tier 5: Google News RSS + GDELT (free, always available)
 """
 
@@ -27,7 +27,7 @@ from app.utils.logger import log
 
 settings = get_settings()
 
-def _get_proxy_headers() -> dict:
+def _get_browser_headers() -> dict:
     """Realistic browser User-Agent for all outbound requests."""
     return {
         "User-Agent": (
@@ -38,16 +38,13 @@ def _get_proxy_headers() -> dict:
     }
 
 def _get_httpx_client(timeout: float = 20.0) -> httpx.AsyncClient:
-    """Create httpx client with standardized Webshare proxy and browser headers."""
-    proxy_url = os.getenv("WEBSHARE_PROXY_URL")
+    """Create httpx client with standardized browser headers."""
     kwargs = {
         "timeout": timeout, 
         "follow_redirects": True, 
-        "headers": _get_proxy_headers(),
-        "proxy": proxy_url if proxy_url else None
+        "headers": _get_browser_headers(),
     }
     return httpx.AsyncClient(**kwargs)
-
 # ═══════════════════════════════════════════════════════════════
 # TIER 1: Google Custom Search
 # ═══════════════════════════════════════════════════════════════
@@ -55,7 +52,6 @@ async def search_google_custom(query: str, trusted_only: bool = False) -> list:
     if not settings.GOOGLE_API_KEY or not settings.GOOGLE_CSE_ID:
         return []
 
-    # FIX: Truncate query to prevent 403/URL length issues
     safe_query = query[:300]
     cache_key = f"gcs:{safe_query}:trusted={trusted_only}"
     
@@ -102,39 +98,25 @@ async def search_google_custom(query: str, trusted_only: bool = False) -> list:
     return articles
 
 # ═══════════════════════════════════════════════════════════════
-# TIER 2: Tavily AI Search
+# TIER 2: DuckDuckGo (Promoted)
 # ═══════════════════════════════════════════════════════════════
-async def search_tavily(query: str, trusted_only: bool = False):
-    """Tier 2: Tavily AI Search with Proxy and Truncation."""
-    if not settings.TAVILY_API_KEY:
-        return []
-    
-    # FIX: Truncate to prevent 'Query too long' error
-    safe_query = query[:300]
-
-    async def _call():
-        async with _get_httpx_client(20.0) as client:
-            resp = await client.post(
-                "https://api.tavily.com/search",
-                json={
-                    "api_key": settings.TAVILY_API_KEY,
-                    "query": safe_query,
-                    "search_depth": "advanced",
-                    "max_results": 5
-                }
-            )
-            resp.raise_for_status()
-            data = resp.json().get("results", [])
+async def search_duckduckgo(query: str) -> list:
+    """Tier 2: Fast, unlimited fallback."""
+    try:
+        from duckduckgo_search import AsyncDDGS
+        async with AsyncDDGS() as ddgs:
+            results = [r async for r in ddgs.text(query[:300], max_results=5)]
             return [{
-                "url": r["url"],
-                "title": r["title"],
-                "snippet": r["content"],
-                "source_name": "Tavily AI",
-                "channel": "tavily",
+                "url": r["href"], 
+                "title": r["title"], 
+                "snippet": r["body"], 
+                "source_name": "DuckDuckGo", 
+                "channel": "duckduckgo", 
                 "retrieval_tier": "tier_2"
-            } for r in data]
-
-    return await circuit_tavily.call(_call) or []
+            } for r in results]
+    except Exception as e:
+        log.error(f"[Search] DDG Failed: {e}")
+        return []
 
 # ═══════════════════════════════════════════════════════════════
 # TIER 3: NewsData.io & NewsAPI.org
@@ -152,7 +134,7 @@ async def search_newsdata(query: str) -> list:
             return [{
                 "url": a.get("link", ""),
                 "title": a.get("title", ""),
-                "snippet": a.get("description", "")[:300],
+                "snippet": a.get("description", "")[:300] if a.get("description") else "",
                 "source_name": a.get("source_id", "NewsData"),
                 "channel": "newsdata",
                 "retrieval_tier": "tier_3"
@@ -180,39 +162,58 @@ async def search_newsapi(query: str) -> list:
     return await circuit_newsapi.call(_call) or []
 
 # ═══════════════════════════════════════════════════════════════
-# TIER 4: DuckDuckGo
+# TIER 4: Tavily AI Search (Demoted to preserve quota)
 # ═══════════════════════════════════════════════════════════════
-async def search_duckduckgo(query: str) -> list:
-    try:
-        from duckduckgo_search import AsyncDDGS
-        # Note: AsyncDDGS has internal proxy support if needed, but uses local loop for now
-        async with AsyncDDGS() as ddgs:
-            results = [r async for r in ddgs.text(query[:300], max_results=5)]
-            return [{
-                "url": r["href"], 
-                "title": r["title"], 
-                "snippet": r["body"], 
-                "source_name": "DuckDuckGo", 
-                "channel": "duckduckgo", 
-                "retrieval_tier": "tier_4"
-            } for r in results]
-    except Exception:
+async def search_tavily(query: str, trusted_only: bool = False):
+    if not settings.TAVILY_API_KEY:
         return []
+    
+    safe_query = query[:300]
+
+    async def _call():
+        async with _get_httpx_client(20.0) as client:
+            resp = await client.post(
+                "https://api.tavily.com/search",
+                json={
+                    "api_key": settings.TAVILY_API_KEY,
+                    "query": safe_query,
+                    "search_depth": "advanced",
+                    "max_results": 5
+                }
+            )
+            resp.raise_for_status()
+            data = resp.json().get("results", [])
+            return [{
+                "url": r["url"],
+                "title": r["title"],
+                "snippet": r["content"],
+                "source_name": "Tavily AI",
+                "channel": "tavily",
+                "retrieval_tier": "tier_4"
+            } for r in data]
+
+    return await circuit_tavily.call(_call) or []
 
 # ═══════════════════════════════════════════════════════════════
 # TIER 5: Google News RSS & GDELT
 # ═══════════════════════════════════════════════════════════════
 async def search_google_news_rss(query: str) -> list:
+    """Tier 5: Google News RSS — now wrapped in circuit_google_news (BUG-02 fixed)."""
     encoded = urllib.parse.quote_plus(query[:300])
     url = f"https://news.google.com/rss/search?q={encoded}&hl=en-IN&gl=IN&ceid=IN:en"
-    async with _get_httpx_client(10.0) as client:
-        resp = await client.get(url)
-        feed = feedparser.parse(resp.text)
-        return [{
-            "url": e.link, "title": e.title, "snippet": e.summary, 
-            "source_name": "Google News", "channel": "google_news_rss", 
-            "retrieval_tier": "tier_5"
-        } for e in feed.entries[:5]]
+
+    async def _call():
+        async with _get_httpx_client(10.0) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            feed = feedparser.parse(resp.text)
+            return [{
+                "url": e.link, "title": e.title, "snippet": e.summary,
+                "source_name": "Google News", "channel": "google_news_rss",
+                "retrieval_tier": "tier_5"
+            } for e in feed.entries[:5]]
+
+    return await circuit_google_news.call(_call) or []
 
 async def search_gdelt(query: str):
     safe_query = urllib.parse.quote(query[:300])
@@ -232,20 +233,30 @@ async def search_gdelt(query: str):
 async def tiered_search(query: str, max_sources: int = 10, **kwargs) -> dict:
     log.info(f"[Search] Executing tiered search: '{query[:60]}' (limit: {max_sources})")
 
+    # SWAPPED ORDER: Tier 2 is now DDG, Tier 4 is Tavily
     tasks = [
-        search_google_custom(query, trusted_only=True),
-        search_tavily(query, trusted_only=False),
-        search_newsdata(query),
-        search_newsapi(query),
-        search_duckduckgo(query),
-        search_google_news_rss(query),
-        search_gdelt(query),
+        search_google_custom(query, trusted_only=True), # Tier 1
+        search_duckduckgo(query),                      # Tier 2 (SWAPPED UP)
+        search_newsdata(query),                        # Tier 3
+        search_newsapi(query),                         # Tier 3
+        search_tavily(query, trusted_only=False),      # Tier 4 (SWAPPED DOWN)
+        search_google_news_rss(query),                 # Tier 5
+        search_gdelt(query),                           # Tier 5
     ]
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
     all_sources = []
     tier_stats = {}
-    tier_names = ["tier_1_google", "tier_2_tavily", "tier_3_newsdata", "tier_3_newsapi", "tier_4_ddg", "tier_5_rss", "tier_5_gdelt"]
+    
+    tier_names = [
+        "tier_1_google", 
+        "tier_2_ddg", 
+        "tier_3_newsdata", 
+        "tier_3_newsapi", 
+        "tier_4_tavily", 
+        "tier_5_rss", 
+        "tier_5_gdelt"
+    ]
 
     for i, result in enumerate(results):
         name = tier_names[i]
@@ -256,6 +267,7 @@ async def tiered_search(query: str, max_sources: int = 10, **kwargs) -> dict:
             tier_stats[name] = f"{len(result)} articles"
             all_sources.extend(result)
 
+    # Deduplicate by domain
     seen_domains = set()
     deduped = []
     for src in all_sources:

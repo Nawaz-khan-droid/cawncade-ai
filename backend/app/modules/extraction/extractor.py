@@ -1,6 +1,6 @@
 """
 Content Extraction Module v3.0.
-Fetches URLs with realistic browser User-Agent and proxy support.
+Fetches URLs with realistic browser User-Agent.
 Extracts article title, text, and generates search keywords.
 """
 
@@ -28,8 +28,6 @@ class ContentExtractor:
 
         try:
             client_kwargs = {"timeout": self.timeout, "follow_redirects": True, "headers": self.headers}
-            if settings.WEBSHARE_PROXY_URL:
-                client_kwargs["proxy"] = settings.WEBSHARE_PROXY_URL
 
             async with httpx.AsyncClient(**client_kwargs) as client:
                 response = await client.get(url)

@@ -5,9 +5,9 @@ Stream 1 (API): YouTube Data API v3 via GOOGLE_API_KEY
   → Fetches: title, description, channel, views, duration, publish date, thumbnails
   → Fast, reliable, uses official API quota
 
-Stream 2 (Scraper): youtube-transcript-api via WEBSHARE_PROXY_URL
+Stream 2 (Scraper): youtube-transcript-api
   → Fetches: full transcript/subtitles for fact-checking
-  → No API cost, uses Webshare rotating proxy to avoid IP blocks
+  → No API cost
 
 Fallback: If API quota is exceeded (403/403), scraper attempts metadata extraction.
 All Google services share the single GOOGLE_API_KEY (5-in-1).
@@ -127,17 +127,9 @@ def _parse_iso_duration(iso: str) -> int:
 # STREAM 2: Transcript Scraper (youtube-transcript-api + Webshare)
 # ═══════════════════════════════════════════════════════════════
 
-def _get_proxy_dict():
-    """Build proxy dictionary for the transcript API."""
-    proxy_url = settings.WEBSHARE_PROXY_URL
-    if proxy_url:
-        return {"http": proxy_url, "https": proxy_url}
-    return None
-
-
 async def fetch_transcript_scraper(video_id: str, languages: list = None) -> dict:
     """
-    Fetch video transcript using youtube-transcript-api with Webshare proxy.
+    Fetch video transcript using youtube-transcript-api.
     """
     if languages is None:
         languages = ["en", "hi"]
@@ -148,12 +140,11 @@ async def fetch_transcript_scraper(video_id: str, languages: list = None) -> dic
         return {**cached, "cached": True}
 
     def _fetch():
-        proxies = _get_proxy_dict()
         try:
-            return YouTubeTranscriptApi.get_transcript(video_id, languages=languages, proxies=proxies)
+            return YouTubeTranscriptApi.get_transcript(video_id, languages=languages)
         except Exception as e:
             # Fallback to list/find if direct fetch fails
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id, proxies=proxies)
+            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
             return transcript_list.find_transcript(languages).fetch()
 
     try:
