@@ -6,9 +6,10 @@ import MetricsPanel from '../components/MetricsPanel';
 import SourceCard from '../components/SourceCard';
 import VisualLens from '../components/VisualLens';
 import TransparencyPanel from '../components/TransparencyPanel';
+import TalkToAgent from '../components/TalkToAgent';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, MessageSquare } from 'lucide-react';
 
 export default function Dashboard() {
   const location = useLocation();
@@ -65,6 +66,9 @@ export default function Dashboard() {
         <button onClick={() => setActiveTab('visual')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'visual' ? 'bg-brand-500/20 text-brand-400' : 'text-gray-500 hover:text-gray-300'}`}>
           Visual Lens
         </button>
+        <button onClick={() => setActiveTab('chat')} className={`px-4 py-2 flex items-center gap-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'chat' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'text-gray-500 hover:text-gray-300'}`}>
+          <MessageSquare size={16} /> Chat with Agent
+        </button>
       </div>
 
       {!result && !imageResult && !isLoading && (
@@ -108,6 +112,12 @@ export default function Dashboard() {
       )}
 
       {activeTab === 'visual' && <VisualLens result={imageResult} isLoading={isLoading} />}
+      
+      {activeTab === 'chat' && (
+        <div className="animate-fade-in">
+          <TalkToAgent />
+        </div>
+      )}
 
       {isLoading && (
         <div className="glass-card p-12 text-center animate-pulse">

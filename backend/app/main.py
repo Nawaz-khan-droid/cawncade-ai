@@ -25,6 +25,17 @@ app.include_router(admin.router, prefix="/api/v1/admin")
 async def health():
     return {"status": "online", "engine": "Llama 3.1 8B"}
 
+from pydantic import BaseModel
+class ChatRequest(BaseModel):
+    message: str
+    session_id: str = "default"
+
+from app.services.agent_service import cawncade_chat_agent
+
+@app.post("/api/v1/chat")
+async def handle_chat(req: ChatRequest):
+    return await cawncade_chat_agent.chat(user_input=req.message, session_id=req.session_id)
+
 # 3. STATIC UI SERVING
 # Find the static folder we copied in the Dockerfile
 static_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "static")

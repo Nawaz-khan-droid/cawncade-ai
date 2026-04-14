@@ -21,6 +21,7 @@ from langchain.tools import tool
 from langchain import hub
 from langchain_community.tools.ddg_search.tool import DuckDuckGoSearchRun
 from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
+from langchain_core.messages import AIMessage, HumanMessage
 
 from app.config.settings import get_settings
 from app.core.resilience import circuit_agent
@@ -44,7 +45,8 @@ def process_url(url: str) -> str:
     Output: The article text, up to 4,000 characters (context-window safe).
     """
     try:
-        jina_url = f"https://r.jina.ai/{url}"
+        clean_url = url.strip().strip("'").strip('"').replace(" ", "")
+        jina_url = f"https://r.jina.ai/{clean_url}"
         log.info(f"[process_url] Fetching via Jina Reader: {jina_url[:100]}")
 
         response = httpx.get(
@@ -298,7 +300,10 @@ class CawncadeAgent:
             f"5. You may also use you_search for AI-powered wide-web context gathering.\n"
             f"6. Prioritize reputable outlets: Reuters, AP News, BBC, PTI, The Hindu, Livemint.\n"
             f"7. Issue a clear VERDICT: True, False, or Mixed.\n"
-            f"8. MANDATORY: Cite the full source URL for every fact in your final answer."
+            f"8. MANDATORY: Cite the full source URL for every fact in your final answer.\n"
+            f"9. FALLBACK RULE: If you cannot scrape a URL, you MUST generate a summary based on the snippets retrieved. Use exactly this format:\n"
+            f"   ### AI SUMMARY\n"
+            f"   [Summary Content]"
         )
 
         async def _call():
@@ -342,3 +347,51 @@ class CawncadeAgent:
 
 # ── Singleton export for the orchestrator ─────────────────────
 cawncade_agent = CawncadeAgent()
+
+# ═══════════════════════════════════════════════════════════════
+# CAWNCADE CHAT AGENT — Conversational History
+# ═══════════════════════════════════════════════════════════════
+class CawncadeChatAgent:
+    def __init__(self):
+        # We reuse the same single-init LLM router and tool stack strategy
+        self._core_agent = CawncadeAgent()
+        self.memory = {} # Maps session_id to list of messages
+        self._initialized = False
+
+    def _init(self):
+        if not self._initialized:
+            self._core_agent._init_agent()
+            self._initialized = True
+
+    async def chat(self, user_input: str, session_id: str = "default") -> dict:
+        self._init()
+        
+        if session_id not in self.memory:
+            self.memory[session_id] = []
+            
+        history = self.memory[session_id]
+        history.append(HumanMessage(content=user_input))
+        
+        # We invoke via AgentExecutor directly
+        if getattr(self._core_agent, "_agent_executor", None):
+            loop = asyncio.get_running_loop()
+            
+            # Format the memory into a string context if prompt expects string, 
+            # or pass it natively if Using LangChain 0.2+ ChatPrompts. 
+            # Our prompt hwchase17/react natively takes `input` as string. 
+            # We append the history string to the input securely.
+            history_str = "\n".join([f"{type(m).__name__}: {m.content}" for m in history[-5:]])
+            chat_input = f"CHAT HISTORY:\n{history_str}\n\nUSER NEW MESSAGE: {user_input}"
+            
+            response = await loop.run_in_executor(
+                None,
+                lambda: self._core_agent._agent_executor.invoke({"input": chat_input}),
+            )
+            output = response.get("output", "")
+        else:
+            output = "Agent Engine not initialized."
+            
+        history.append(AIMessage(content=output))
+        return {"output": output}
+
+cawncade_chat_agent = CawncadeChatAgent()
