@@ -103,17 +103,23 @@ async def search_google_custom(query: str, trusted_only: bool = False) -> list:
 async def search_duckduckgo(query: str) -> list:
     """Tier 2: Fast, unlimited fallback."""
     try:
-        from duckduckgo_search import AsyncDDGS
-        async with AsyncDDGS() as ddgs:
-            results = [r async for r in ddgs.text(query[:300], max_results=5)]
-            return [{
-                "url": r["href"], 
-                "title": r["title"], 
-                "snippet": r["body"], 
-                "source_name": "DuckDuckGo", 
-                "channel": "duckduckgo", 
-                "retrieval_tier": "tier_2"
-            } for r in results]
+        from duckduckgo_search import DDGS
+        # Wrapper updated for v6+
+        results = []
+        with DDGS() as ddgs:
+            raw_results = ddgs.text(query[:300], max_results=5)
+            # ddgs.text returns a generator
+            for r in raw_results:
+                results.append(r)
+                
+        return [{
+            "url": r["href"], 
+            "title": r["title"], 
+            "snippet": r["body"], 
+            "source_name": "DuckDuckGo", 
+            "channel": "duckduckgo", 
+            "retrieval_tier": "tier_2"
+        } for r in results]
     except Exception as e:
         log.error(f"[Search] DDG Failed: {e}")
         return []

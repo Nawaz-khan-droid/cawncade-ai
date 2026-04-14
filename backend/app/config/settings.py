@@ -10,6 +10,7 @@ HuggingFace Space Configuration:
                      TAVILY_API_KEY, NEWSDATA_API_KEY, NEWS_API_KEY
 """
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from functools import lru_cache
 
 
@@ -69,6 +70,11 @@ class Settings(BaseSettings):
     #   5. Google Cloud Storage  (SQLite DB backup, JSON API)
     GOOGLE_API_KEY: str = ""               # HF Secret: GOOGLE_API_KEY
     GOOGLE_CSE_ID: str = ""                # HF Variable: GOOGLE_CSE_ID
+
+    @field_validator("GOOGLE_API_KEY", "GOOGLE_CSE_ID")
+    @classmethod
+    def strip_whitespace(cls, v: str) -> str:
+        return v.strip() if isinstance(v, str) else v
 
     # ── Google Cloud Storage (DB Backup — uses same GOOGLE_API_KEY) ──
     GCS_BUCKET_NAME: str = ""              # Optional: set as Variable or Secret

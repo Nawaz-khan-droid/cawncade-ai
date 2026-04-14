@@ -55,7 +55,7 @@ def process_url(url: str) -> str:
                     "+https://huggingface.co/spaces) fact-checker"
                 )
             },
-            timeout=15.0,
+            timeout=30.0,
             follow_redirects=True,
         )
         response.raise_for_status()
@@ -68,8 +68,12 @@ def process_url(url: str) -> str:
 
     except httpx.TimeoutException:
         log.warning(f"[process_url] ⚠️ Timeout fetching: {url[:80]}")
-        return "Could not retrieve article: request timed out after 15 seconds."
+        return "Could not retrieve article: request timed out after 30 seconds."
     except httpx.HTTPStatusError as e:
+        if e.response.status_code == 451:
+            log.warning(f"[process_url] ⚠️ HTTP 451 (Geo-Block) for: {url[:80]}")
+            return "Could not retrieve article: HTTP 451 Unavailable for Legal Reasons (Geo-blocked/Paywalled)."
+        
         log.warning(
             f"[process_url] ⚠️ HTTP {e.response.status_code} for: {url[:80]}"
         )
