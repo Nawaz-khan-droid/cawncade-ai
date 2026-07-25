@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Link as LinkIcon, Lock, Loader2, AlertCircle } from 'lucide-react';
 import api from '../services/api';
 import { usePipeline } from '../context/PipelineContext';
+import ContextSynthesis from '../components/ContextSynthesis';
 
 const Gauge = ({ label, value, colorClass }) => {
   const radius = 40;
@@ -153,6 +154,12 @@ export default function ContextLens() {
                   {result.context_summary}
                 </p>
               </div>
+
+              {result.agent_deep_dive && (
+                <div className="w-full">
+                  <ContextSynthesis summary={result.agent_deep_dive} isLoading={false} />
+                </div>
+              )}
 
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <Gauge label="Confidence" value={result.scores?.confidence || 0} colorClass="text-emerald-500" />
