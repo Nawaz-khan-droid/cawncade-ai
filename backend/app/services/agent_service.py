@@ -422,13 +422,9 @@ Thought:{{agent_scratchpad}}"""
 
     # ── Fallback ───────────────────────────────────────────────
     def _template_synthesis(self, query: str, evidence: str = "") -> str:
-        """Graceful fallback synthesis when the reasoning engine is unavailable."""
-        summary = evidence[:300] if evidence else "No direct evidence found."
-        return (
-            f"VERDICT: PRELIMINARY ASSESSMENT\n\n"
-            f"Reasoning: The deep-check engine is currently unavailable. "
-            f"Initial data snippet: {summary}..."
-        )
+        """Graceful fallback synthesis when the reasoning engine is unavailable.
+        Returning an empty string forces the Orchestrator to engage the local Extractive NLP (Sumy)."""
+        return ""
 
 
 # ── Singleton export for the orchestrator ─────────────────────
