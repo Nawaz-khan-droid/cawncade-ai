@@ -1,114 +1,76 @@
-"""
-Scoring Engine v3.0.
-Computes the final confidence score using the CAWNCADE formula.
-"""
-from app.config.settings import get_settings
+import re
 from app.utils.logger import log
-from app.utils.helpers import normalize_score
-
-settings = get_settings()
-
 
 class ScoringEngine:
     def __init__(self):
-        self.weights = {
-            "credibility": settings.W_CREDIBILITY,
-            "agreement": settings.W_AGREEMENT,
-            "diversity": settings.W_DIVERSITY,
-            "recency": settings.W_RECENCY,
-            "grounding": settings.W_GROUNDING,
-        }
-        self.bias_threshold = settings.PENALTY_BIAS_THRESHOLD
-        self.conflict_threshold = settings.PENALTY_CONFLICT_THRESHOLD
-        self.ai_risk_threshold = settings.PENALTY_AI_RISK_THRESHOLD
+        # Fast NLP Token Heuristics
+        self.bias_tokens = re.compile(r'\b(obviously|clearly|ridiculous|absurd|destroy|slam|owned|shocking|outrageous|agenda|propaganda|fake|biased)\b', re.IGNORECASE)
+        self.sensitivity_tokens = re.compile(r'\b(death|kill|bomb|attack|war|election|fraud|virus|vaccine|illegal|riot|protest|assassination|scandal)\b', re.IGNORECASE)
+        self.ai_risk_tokens = re.compile(r'\b(as an ai|language model|delve into|in conclusion|it is important to note|testament to|tapestry|intricate|moreover|furthermore|additionally)\b', re.IGNORECASE)
 
-    def compute_score(self, credibility_avg, agreement_score, diversity_score,
-                       recency_score, grounding_score, tfidf_suspicion=0.0,
-                       bias_score=0.0, conflict_score=0.0, ai_risk_score=0.0) -> dict:
-        credibility_avg = normalize_score(credibility_avg)
-        agreement_score = normalize_score(agreement_score)
-        diversity_score = normalize_score(diversity_score)
-        recency_score = normalize_score(recency_score)
-        grounding_score = normalize_score(grounding_score)
-        tfidf_suspicion = normalize_score(tfidf_suspicion)
-        bias_score = normalize_score(bias_score)
-        conflict_score = normalize_score(conflict_score)
-        ai_risk_score = normalize_score(ai_risk_score)
+    def calculate_nlp_heuristic(self, texts, regex_pattern, max_hits=5):
+        if not texts:
+            return 0.0
+        combined_text = " ".join(texts)
+        matches = len(regex_pattern.findall(combined_text))
+        return min(matches / max_hits, 1.0)
 
-        base_confidence = (
-            self.weights["credibility"] * credibility_avg
-            + self.weights["agreement"] * agreement_score
-            + self.weights["diversity"] * diversity_score
-            + self.weights["recency"] * recency_score
-            + self.weights["grounding"] * grounding_score
-        )
-
-        bias_penalty = 0.0
-        if bias_score > self.bias_threshold:
-            bias_penalty = (bias_score - self.bias_threshold) * 0.5
-
-        conflict_penalty = 0.0
-        if conflict_score > self.conflict_threshold:
-            conflict_penalty = (conflict_score - self.conflict_threshold) * 0.4
-
-        ai_risk_penalty = 0.0
-        if ai_risk_score > self.ai_risk_threshold:
-            ai_risk_penalty = (ai_risk_score - self.ai_risk_threshold) * 0.3
-
-        suspicion_penalty = tfidf_suspicion * 0.15
-        total_penalty = bias_penalty + conflict_penalty + ai_risk_penalty + suspicion_penalty
-        confidence = normalize_score(base_confidence - total_penalty)
-
-        disclaimers = self._generate_disclaimers(credibility_avg, diversity_score, agreement_score, conflict_score, bias_score, ai_risk_score, confidence)
-
+    def compute_score(self, query: str, sources: list) -> dict:
+        if not sources:
+            return {
+                "confidence": 0.0,
+                "bias": 0.0,
+                "conflict": 0.0,
+                "sensitivity": 0.0,
+                "ai_risk": 0.0,
+                "recency": 0.0,
+                "confidence_label": "INSUFFICIENT"
+            }
+            
+        texts = [s.get("title", "") + " " + s.get("snippet", "") for s in sources]
+        all_texts = [query] + texts
+        
+        # 1. Recency
+        recency_avg = sum(s.get("recency_score", 0.5) for s in sources) / len(sources)
+        
+        # 2. Conflict (Structural heuristic based on domain diversity vs trust)
+        domains = set(s.get("domain", "") for s in sources)
+        trusted_ratio = len([s for s in sources if s.get("is_trusted_domain")]) / len(sources)
+        conflict_score = max(0.0, min((len(domains) / 10) - (trusted_ratio * 0.5), 1.0))
+        
+        # 3. Bias
+        bias_score = self.calculate_nlp_heuristic(texts, self.bias_tokens, max_hits=8)
+        
+        # 4. Sensitivity
+        sensitivity_score = self.calculate_nlp_heuristic(all_texts, self.sensitivity_tokens, max_hits=3)
+        
+        # 5. AI Risk
+        ai_risk_score = self.calculate_nlp_heuristic(texts, self.ai_risk_tokens, max_hits=5)
+        
+        # 6. Confidence
+        credibility_avg = sum(s.get("credibility_score", 0.5) for s in sources) / len(sources)
+        base_confidence = (credibility_avg * 0.6) + (trusted_ratio * 0.4)
+        penalty = (bias_score * 0.1) + (conflict_score * 0.15) + (ai_risk_score * 0.1)
+        confidence = max(0.0, min(base_confidence - penalty, 1.0))
+        
         return {
-            "confidence_score": round(confidence, 4),
-            "credibility_avg": round(credibility_avg, 4),
-            "agreement_score": round(agreement_score, 4),
-            "diversity_score": round(diversity_score, 4),
-            "recency_score": round(recency_score, 4),
-            "grounding_score": round(grounding_score, 4),
-            "bias_score": round(bias_score, 4),
-            "conflict_score": round(conflict_score, 4),
-            "ai_risk_score": round(ai_risk_score, 4),
-            "tfidf_suspicion_score": round(tfidf_suspicion, 4),
-            "bias_penalty": round(bias_penalty, 4),
-            "conflict_penalty": round(conflict_penalty, 4),
-            "ai_risk_penalty": round(ai_risk_penalty, 4),
-            "suspicion_penalty": round(suspicion_penalty, 4),
-            "dynamic_disclaimers": disclaimers,
-            "confidence_label": self._get_confidence_label(confidence),
+            "confidence": round(confidence, 4),
+            "bias": round(bias_score, 4),
+            "conflict": round(conflict_score, 4),
+            "sensitivity": round(sensitivity_score, 4),
+            "ai_risk": round(ai_risk_score, 4),
+            "recency": round(recency_avg, 4),
+            "confidence_label": self._get_confidence_label(confidence)
         }
-
-    def _generate_disclaimers(self, credibility, diversity, agreement, conflict, bias, ai_risk, confidence):
-        disclaimers = []
-        if credibility < 0.5:
-            disclaimers.append("Sources with low average credibility. Verify with additional sources.")
-        if diversity < 0.3:
-            disclaimers.append("Low source diversity. Most sources may come from similar perspectives.")
-        if conflict > 0.5:
-            disclaimers.append("Significant conflicting information detected. Multiple narratives exist.")
-        if bias > 0.3:
-            disclaimers.append("Potential bias detected in source selection or framing.")
-        if ai_risk > 0.5:
-            disclaimers.append("Content may be AI-generated or manipulated. Exercise caution.")
-        if confidence < 0.3:
-            disclaimers.append("Insufficient evidence for confident assessment. Seek more sources.")
-        if agreement > 0.8:
-            disclaimers.append("Strong agreement across sources on this topic.")
-        return disclaimers
 
     def _get_confidence_label(self, confidence):
         if confidence >= 0.8:
-            return "HIGH - Strong evidence support"
+            return "HIGH"
         elif confidence >= 0.6:
-            return "MODERATE - Generally supported by sources"
+            return "MODERATE"
         elif confidence >= 0.4:
-            return "LOW - Mixed or limited evidence"
-        elif confidence >= 0.2:
-            return "VERY LOW - Significant uncertainty"
+            return "LOW"
         else:
-            return "INSUFFICIENT - Cannot reliably assess"
-
+            return "INSUFFICIENT"
 
 scoring_engine = ScoringEngine()

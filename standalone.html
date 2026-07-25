@@ -1,0 +1,1195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CAWNCADE AI — Context-Aware Misinformation Analysis</title>
+  <meta name="description" content="CAWNCADE AI performs multi-vector contextual analysis across live web sources, identifying bias, conflict, AI-generation risk, and source credibility." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/framer-motion@10.18.0/dist/framer-motion.js"></script>
+
+  <style>
+    :root {
+      --bg: #06090f;
+      --surface: #090e1b;
+      --card: #0d1424;
+      --card-alt: #111b30;
+      --border: rgba(59,130,246,0.12);
+      --border-hover: rgba(59,130,246,0.28);
+      --primary: #3b82f6;
+      --primary-dim: rgba(59,130,246,0.18);
+      --primary-glow: rgba(59,130,246,0.35);
+      --accent: #06b6d4;
+      --accent-dim: rgba(6,182,212,0.15);
+      --success: #10b981;
+      --success-dim: rgba(16,185,129,0.15);
+      --warning: #f59e0b;
+      --warning-dim: rgba(245,158,11,0.15);
+      --alert: #ef4444;
+      --alert-dim: rgba(239,68,68,0.15);
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --text-dim: #4a5568;
+      --font-display: 'Exo 2', sans-serif;
+      --font-body: 'Inter', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--font-body);
+      background-color: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+      line-height: 1.6;
+    }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: var(--surface); }
+    ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 99px; }
+
+    /* ── Keyframes ── */
+    @keyframes shimmer {
+      0%   { background-position: -700px 0; }
+      100% { background-position:  700px 0; }
+    }
+    @keyframes pulse-glow {
+      0%,100% { opacity:1; box-shadow:0 0 6px 2px var(--success); }
+      50%      { opacity:.55; box-shadow:0 0 12px 4px var(--success); }
+    }
+    @keyframes pulse-primary {
+      0%,100% { box-shadow:0 0 12px 2px var(--primary-glow); }
+      50%      { box-shadow:0 0 28px 8px var(--primary-glow); }
+    }
+    @keyframes float {
+      0%,100% { transform:translateY(0); }
+      50%      { transform:translateY(-12px); }
+    }
+    @keyframes scan-line {
+      0%   { transform:translateY(-100%); opacity:0; }
+      10%  { opacity:.6; }
+      90%  { opacity:.6; }
+      100% { transform:translateY(600%); opacity:0; }
+    }
+    @keyframes grid-drift {
+      0%   { background-position:0 0; }
+      100% { background-position:40px 40px; }
+    }
+    @keyframes orbit {
+      from { transform:rotate(0deg); }
+      to   { transform:rotate(360deg); }
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    @keyframes fade-in {
+      from { opacity:0; transform:translateY(16px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    @keyframes mobile-menu-in {
+      from { opacity:0; transform:translateY(-8px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+
+    /* ── Utilities ── */
+    .shimmer {
+      background: linear-gradient(90deg, var(--card) 25%, var(--card-alt) 50%, var(--card) 75%);
+      background-size:700px 100%;
+      animation: shimmer 1.6s ease-in-out infinite;
+    }
+    .status-dot {
+      width:8px; height:8px;
+      background:var(--success);
+      border-radius:50%;
+      animation: pulse-glow 2s ease-in-out infinite;
+      flex-shrink:0;
+    }
+    .glow-btn { animation: pulse-primary 3s ease-in-out infinite; }
+    .float-anim { animation: float 6s ease-in-out infinite; }
+    .grid-bg {
+      background-image:
+        linear-gradient(rgba(59,130,246,0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(59,130,246,0.05) 1px, transparent 1px);
+      background-size:40px 40px;
+      animation: grid-drift 8s linear infinite;
+    }
+    .spin { animation: spin 1s linear infinite; }
+
+    /* ── Mobile nav ── */
+    .mobile-menu {
+      display:none;
+      position:absolute;
+      top:100%;
+      left:0; right:0;
+      background:rgba(6,9,15,0.97);
+      border-bottom:1px solid var(--border);
+      padding:1rem 1.5rem;
+      flex-direction:column;
+      gap:1rem;
+      backdrop-filter:blur(16px);
+      animation: mobile-menu-in 0.2s ease;
+    }
+    .mobile-menu.open { display:flex; }
+
+    /* ── Responsive helpers ── */
+    @media (max-width:768px) {
+      .hide-mobile { display:none !important; }
+      .show-mobile { display:flex !important; }
+    }
+    @media (min-width:769px) {
+      .hide-desktop { display:none !important; }
+    }
+
+    /* ── Textarea reset ── */
+    textarea { font-family: var(--font-body); }
+    input, textarea, button { font-family: inherit; }
+    button { cursor:pointer; border:none; background:none; }
+    a { text-decoration:none; color:inherit; }
+
+    /* ── Section heading tag ── */
+    .section-tag {
+      display:inline-block;
+      font-family:var(--font-mono);
+      font-size:.7rem;
+      font-weight:600;
+      letter-spacing:.12em;
+      text-transform:uppercase;
+      color:var(--accent);
+      padding:.25rem .75rem;
+      border-radius:99px;
+      background:var(--accent-dim);
+      border:1px solid rgba(6,182,212,0.25);
+      margin-bottom:.75rem;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="react">
+    const { useState, useEffect, useRef, useCallback } = React;
+    const { motion, AnimatePresence, useInView } = window.Motion;
+
+    /* ═══════════════════════════════════════════════════════════════════
+       SHARED: Logo SVG
+    ════════════════════════════════════════════════════════════════════ */
+    function Logo({ size = 32 }) {
+      const id = `lg-${size}`;
+      return (
+        <svg width={size} height={size} viewBox="0 0 40 40" fill="none" aria-label="CAWNCADE AI logo">
+          <rect width="40" height="40" rx="10" fill={`url(#${id})`} />
+          <path d="M10 20 L20 10 L30 20 L20 30 Z" stroke="#fff" strokeWidth="2" fill="none" />
+          <circle cx="20" cy="20" r="4" fill="#3b82f6" />
+          <path d="M20 10 L20 14 M20 26 L20 30 M10 20 L14 20 M26 20 L30 20" stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" />
+          <defs>
+            <linearGradient id={id} x1="0" y1="0" x2="40" y2="40">
+              <stop offset="0%" stopColor="#1e3a5f" />
+              <stop offset="100%" stopColor="#0d1b35" />
+            </linearGradient>
+          </defs>
+        </svg>
+      );
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       LANDING PAGE
+    ════════════════════════════════════════════════════════════════════ */
+    function AnimatedSection({ children, style = {}, className = '' }) {
+      const ref = useRef(null);
+      const inView = useInView(ref, { once: true, margin: '-60px' });
+      return (
+        <motion.div
+          ref={ref}
+          initial="hidden"
+          animate={inView ? 'visible' : 'hidden'}
+          variants={{ visible: { transition: { staggerChildren: 0.1 } } }}
+          style={style}
+          className={className}
+        >
+          {children}
+        </motion.div>
+      );
+    }
+
+    const fadeUp = {
+      hidden:  { opacity: 0, y: 28 },
+      visible: { opacity: 1, y: 0, transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1] } }
+    };
+
+    function HeroVisual() {
+      const metrics = [
+        { label: 'CONFIDENCE', value: 72, color: '#f59e0b', angle: 270 },
+        { label: 'BIAS',       value: 58, color: '#ef4444', angle: 330 },
+        { label: 'CONFLICT',   value: 85, color: '#ef4444', angle:  30 },
+        { label: 'RECENCY',    value: 34, color: '#ef4444', angle:  90 },
+        { label: 'AI RISK',    value: 63, color: '#f59e0b', angle: 150 },
+        { label: 'SENSITIVITY',value: 41, color: '#f59e0b', angle: 210 },
+      ];
+      return (
+        <div className="float-anim" style={{ position:'relative', width:'clamp(220px,40vw,288px)', height:'clamp(220px,40vw,288px)' }} aria-hidden="true">
+          <svg style={{ position:'absolute', inset:0, width:'100%', height:'100%' }} viewBox="0 0 288 288">
+            <circle cx="144" cy="144" r="128" fill="none" stroke="rgba(59,130,246,0.08)" strokeWidth="1" />
+            <circle cx="144" cy="144" r="98"  fill="none" stroke="rgba(59,130,246,0.06)" strokeWidth="1" />
+            <circle cx="144" cy="144" r="68"  fill="none" stroke="rgba(6,182,212,0.10)"  strokeWidth="1" />
+            <g style={{ animation:'orbit 10s linear infinite', transformOrigin:'144px 144px' }}>
+              <circle cx="144" cy="144" r="128" fill="none" stroke="url(#arc-grad)" strokeWidth="2" strokeDasharray="60 748" strokeLinecap="round" />
+            </g>
+            <defs>
+              <linearGradient id="arc-grad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%"   stopColor="#3b82f6" stopOpacity="0" />
+                <stop offset="50%"  stopColor="#3b82f6" />
+                <stop offset="100%" stopColor="#06b6d4"  stopOpacity="0" />
+              </linearGradient>
+            </defs>
+          </svg>
+          {/* center */}
+          <div style={{
+            position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)',
+            width:72, height:72, borderRadius:'50%',
+            background:'linear-gradient(135deg,#1e3a5f,#0d1b35)',
+            border:'1px solid rgba(59,130,246,0.35)',
+            boxShadow:'0 0 40px rgba(59,130,246,0.25)',
+            display:'flex', alignItems:'center', justifyContent:'center'
+          }}>
+            <Logo size={32} />
+          </div>
+          {/* metric dots */}
+          {metrics.map((m, i) => {
+            const rad = (m.angle * Math.PI) / 180;
+            const x = 50 + 45 * Math.cos(rad);
+            const y = 50 + 45 * Math.sin(rad);
+            return (
+              <div key={i} style={{
+                position:'absolute', left:`${x}%`, top:`${y}%`,
+                transform:'translate(-50%,-50%)',
+                display:'flex', flexDirection:'column', alignItems:'center', gap:2
+              }}>
+                <div style={{
+                  width:34, height:34, borderRadius:'50%',
+                  background:`${m.color}18`,
+                  border:`1.5px solid ${m.color}55`,
+                  color:m.color, display:'flex', alignItems:'center', justifyContent:'center',
+                  fontSize:9, fontFamily:'var(--font-mono)', fontWeight:700
+                }}>{m.value}%</div>
+                <span style={{ fontSize:7, color:'var(--text-dim)', fontFamily:'var(--font-mono)', letterSpacing:1 }}>{m.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    function FeatureCard({ icon, title, desc }) {
+      return (
+        <motion.div
+          variants={fadeUp}
+          whileHover={{ scale:1.025, borderColor:'rgba(59,130,246,0.4)', boxShadow:'0 0 30px rgba(59,130,246,0.1)' }}
+          style={{
+            background:'var(--card)', border:'1px solid var(--border)', borderRadius:16,
+            padding:'1.5rem', display:'flex', flexDirection:'column', gap:'1rem',
+            transition:'border-color .3s, box-shadow .3s'
+          }}
+        >
+          <div style={{
+            width:44, height:44, borderRadius:12, background:'var(--primary-dim)',
+            border:'1px solid rgba(59,130,246,0.2)',
+            display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0
+          }}>{icon}</div>
+          <div>
+            <h3 style={{ fontFamily:'var(--font-display)', fontSize:'1.05rem', fontWeight:700, color:'var(--text)', marginBottom:'.4rem' }}>{title}</h3>
+            <p style={{ fontSize:'.875rem', color:'var(--text-muted)', lineHeight:1.75 }}>{desc}</p>
+          </div>
+        </motion.div>
+      );
+    }
+
+    function StepCard({ num, title, desc, isLast }) {
+      return (
+        <motion.div variants={fadeUp} style={{ display:'flex', gap:'1rem', paddingBottom: isLast ? 0 : '2rem' }}>
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', flexShrink:0 }}>
+            <div style={{
+              width:40, height:40, borderRadius:'50%', background:'var(--primary-dim)',
+              border:'1px solid var(--primary)', color:'var(--primary)',
+              display:'flex', alignItems:'center', justifyContent:'center',
+              fontFamily:'var(--font-mono)', fontSize:'.8rem', fontWeight:700, flexShrink:0
+            }}>{String(num).padStart(2,'0')}</div>
+            {!isLast && <div style={{ flex:1, width:1, background:'rgba(59,130,246,0.15)', margin:'.5rem 0' }} />}
+          </div>
+          <div style={{ paddingTop:'.5rem' }}>
+            <h4 style={{ fontFamily:'var(--font-display)', fontWeight:700, color:'var(--text)', fontSize:'1rem', marginBottom:'.4rem' }}>{title}</h4>
+            <p style={{ fontSize:'.875rem', color:'var(--text-muted)', lineHeight:1.75 }}>{desc}</p>
+          </div>
+        </motion.div>
+      );
+    }
+
+    function LandingPage({ onLaunch }) {
+      const [scrolled, setScrolled] = useState(false);
+      const [mobileOpen, setMobileOpen] = useState(false);
+
+      useEffect(() => {
+        const h = () => { setScrolled(window.scrollY > 40); };
+        window.addEventListener('scroll', h, { passive: true });
+        return () => window.removeEventListener('scroll', h);
+      }, []);
+
+      const navLinks = ['Features', 'How It Works', 'About'];
+
+      return (
+        <div style={{ background:'var(--bg)', minHeight:'100vh' }}>
+          {/* ── NAV ── */}
+          <header style={{
+            position:'fixed', top:0, left:0, right:0, zIndex:50,
+            padding:'0 1.5rem',
+            backdropFilter: scrolled ? 'blur(18px)' : 'none',
+            background: scrolled ? 'rgba(6,9,15,0.88)' : 'transparent',
+            borderBottom: scrolled ? '1px solid var(--border)' : '1px solid transparent',
+            transition:'all .3s',
+          }}>
+            <div style={{ maxWidth:1280, margin:'0 auto', height:64, display:'flex', alignItems:'center', justifyContent:'space-between', gap:'1rem' }}>
+              {/* Brand */}
+              <div style={{ display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
+                <Logo size={30} />
+                <span style={{ fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.05rem', color:'var(--text)', letterSpacing:'.05em' }}>
+                  CAWNCADE <span style={{ color:'var(--primary)' }}>AI</span>
+                </span>
+              </div>
+              {/* Desktop nav */}
+              <nav className="hide-mobile" style={{ display:'flex', alignItems:'center', gap:'2rem' }}>
+                {navLinks.map(l => (
+                  <a key={l} href={`#${l.toLowerCase().replace(' ', '-')}`} style={{ fontSize:'.875rem', color:'var(--text-muted)', fontWeight:500, transition:'color .2s' }}
+                    onMouseEnter={e => e.target.style.color='var(--text)'}
+                    onMouseLeave={e => e.target.style.color='var(--text-muted)'}
+                  >{l}</a>
+                ))}
+              </nav>
+              {/* Desktop CTA */}
+              <button onClick={onLaunch} className="hide-mobile glow-btn" style={{
+                display:'flex', alignItems:'center', gap:8, padding:'.55rem 1.1rem', borderRadius:10,
+                background:'var(--primary)', color:'#fff', fontFamily:'var(--font-display)',
+                fontWeight:700, fontSize:'.875rem', letterSpacing:'.03em', flexShrink:0
+              }}>
+                Launch Dashboard
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </button>
+              {/* Mobile burger */}
+              <button className="show-mobile" onClick={() => setMobileOpen(v => !v)} style={{
+                display:'none', alignItems:'center', justifyContent:'center',
+                width:40, height:40, borderRadius:8, background:'var(--card)',
+                border:'1px solid var(--border)', color:'var(--text-muted)', flexShrink:0
+              }} aria-label="Toggle navigation">
+                {mobileOpen
+                  ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                  : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+                }
+              </button>
+            </div>
+            {/* Mobile menu */}
+            <div className={`mobile-menu ${mobileOpen ? 'open' : ''}`}>
+              {navLinks.map(l => (
+                <a key={l} href={`#${l.toLowerCase().replace(' ', '-')}`}
+                  onClick={() => setMobileOpen(false)}
+                  style={{ fontSize:'.95rem', color:'var(--text-muted)', fontWeight:500, padding:'.25rem 0' }}
+                >{l}</a>
+              ))}
+              <button onClick={() => { setMobileOpen(false); onLaunch(); }} style={{
+                marginTop:'.25rem', padding:'.75rem 1rem', borderRadius:10,
+                background:'var(--primary)', color:'#fff', fontWeight:700,
+                fontFamily:'var(--font-display)', fontSize:'.9rem', textAlign:'center'
+              }}>Launch Dashboard →</button>
+            </div>
+          </header>
+
+          {/* ── HERO ── */}
+          <section style={{ position:'relative', minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', padding:'7rem 1.5rem 5rem', overflow:'hidden' }}>
+            {/* Background elements */}
+            <div className="grid-bg" style={{ position:'absolute', inset:0, opacity:.6, pointerEvents:'none' }} />
+            <div style={{ position:'absolute', top:'40%', left:'50%', transform:'translate(-50%,-50%)', width:'min(600px,90vw)', height:'min(600px,90vw)', background:'radial-gradient(circle,rgba(59,130,246,0.10) 0%,transparent 70%)', pointerEvents:'none' }} />
+            <div style={{ position:'absolute', bottom:0, right:0, width:'min(400px,60vw)', height:'min(400px,60vw)', background:'radial-gradient(circle,rgba(6,182,212,0.07) 0%,transparent 70%)', pointerEvents:'none' }} />
+            <div style={{ position:'absolute', left:0, right:0, height:1, top:'30%', background:'linear-gradient(90deg,transparent,rgba(59,130,246,0.4),transparent)', animation:'scan-line 5s ease-in-out infinite', pointerEvents:'none' }} />
+
+            <div style={{ position:'relative', zIndex:1, maxWidth:1280, width:'100%', display:'flex', flexDirection:'row', alignItems:'center', gap:'4rem', flexWrap:'wrap', justifyContent:'center' }}>
+              {/* Left content */}
+              <motion.div
+                initial="hidden" animate="visible"
+                variants={{ visible:{ transition:{ staggerChildren:.12 } } }}
+                style={{ flex:'1 1 320px', maxWidth:560, display:'flex', flexDirection:'column', gap:'1.5rem' }}
+              >
+                <motion.div variants={fadeUp}>
+                  <span style={{
+                    display:'inline-flex', alignItems:'center', gap:8,
+                    padding:'.35rem .85rem', borderRadius:99,
+                    background:'var(--primary-dim)', border:'1px solid rgba(59,130,246,0.25)',
+                    color:'var(--accent)', fontFamily:'var(--font-mono)', fontSize:'.7rem',
+                    fontWeight:600, letterSpacing:'.1em'
+                  }}>
+                    <span className="status-dot" style={{ background:'var(--accent)', boxShadow:'none', animation:'none', width:6, height:6 }} />
+                    CONTEXT-AWARE INTELLIGENCE v2.1
+                  </span>
+                </motion.div>
+
+                <motion.h1 variants={fadeUp} style={{
+                  fontFamily:'var(--font-display)',
+                  fontSize:'clamp(2.2rem, 6vw, 4rem)',
+                  fontWeight:900, lineHeight:1.1,
+                  letterSpacing:'-.02em', color:'var(--text)'
+                }}>
+                  Decode Misinformation.{' '}
+                  <span style={{ background:'linear-gradient(90deg,var(--primary),var(--accent))', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>
+                    With Precision.
+                  </span>
+                </motion.h1>
+
+                <motion.p variants={fadeUp} style={{ fontSize:'clamp(.95rem,2vw,1.1rem)', color:'var(--text-muted)', lineHeight:1.85 }}>
+                  CAWNCADE AI performs multi-vector contextual analysis across live web sources — identifying bias, conflict, AI-generation risk, and source credibility. Results are probabilistic reliability metrics, never absolute truth.
+                </motion.p>
+
+                <motion.div variants={fadeUp} style={{ display:'flex', flexWrap:'wrap', gap:'.75rem' }}>
+                  <button onClick={onLaunch} className="glow-btn" style={{
+                    display:'flex', alignItems:'center', gap:10,
+                    padding:'.875rem 1.75rem', borderRadius:12,
+                    background:'var(--primary)', color:'#fff',
+                    fontFamily:'var(--font-display)', fontWeight:700,
+                    fontSize:'1rem', letterSpacing:'.02em'
+                  }}
+                    onMouseDown={e => e.currentTarget.style.transform='scale(0.96)'}
+                    onMouseUp={e => e.currentTarget.style.transform='scale(1)'}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    Analyze Context
+                  </button>
+                  <a href="#features" style={{
+                    display:'flex', alignItems:'center', gap:8,
+                    padding:'.875rem 1.5rem', borderRadius:12,
+                    border:'1px solid var(--border-hover)', color:'var(--text-muted)',
+                    fontFamily:'var(--font-display)', fontWeight:600, fontSize:'1rem',
+                    transition:'all .2s'
+                  }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor='rgba(59,130,246,0.5)'; e.currentTarget.style.color='var(--text)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor='var(--border-hover)'; e.currentTarget.style.color='var(--text-muted)'; }}
+                  >
+                    Learn More
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                  </a>
+                </motion.div>
+
+                <motion.div variants={fadeUp} style={{ display:'flex', flexWrap:'wrap', gap:'1.5rem', paddingTop:'.25rem' }}>
+                  {[{ val:'99.1%', label:'Source accuracy' }, { val:'<3s', label:'Analysis time' }, { val:'6', label:'Reliability vectors' }].map(s => (
+                    <div key={s.label} style={{ display:'flex', flexDirection:'column', gap:2 }}>
+                      <span style={{ fontFamily:'var(--font-mono)', fontSize:'1.15rem', fontWeight:600, color:'var(--primary)' }}>{s.val}</span>
+                      <span style={{ fontSize:'.72rem', color:'var(--text-dim)', textTransform:'uppercase', letterSpacing:'.07em' }}>{s.label}</span>
+                    </div>
+                  ))}
+                </motion.div>
+              </motion.div>
+
+              {/* Right: Hero visual */}
+              <motion.div
+                initial={{ opacity:0, scale:.85 }}
+                animate={{ opacity:1, scale:1, transition:{ duration:.8, ease:[.22,1,.36,1], delay:.3 } }}
+                style={{ flexShrink:0, display:'flex', justifyContent:'center' }}
+              >
+                <HeroVisual />
+              </motion.div>
+            </div>
+
+            {/* Scroll indicator */}
+            <motion.div
+              initial={{ opacity:0 }} animate={{ opacity:1, transition:{ delay:1.8 } }}
+              style={{ position:'absolute', bottom:'2rem', left:'50%', transform:'translateX(-50%)', display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}
+            >
+              <span style={{ fontSize:'.65rem', color:'var(--text-dim)', letterSpacing:'.12em', fontFamily:'var(--font-mono)' }}>SCROLL</span>
+              <div style={{ width:18, height:28, borderRadius:99, border:'1px solid var(--border-hover)', display:'flex', alignItems:'flex-start', justifyContent:'center', paddingTop:4 }}>
+                <div style={{ width:4, height:8, borderRadius:99, background:'var(--primary)', animation:'float 1.5s ease-in-out infinite' }} />
+              </div>
+            </motion.div>
+          </section>
+
+          {/* ── FEATURES ── */}
+          <section id="features" style={{ padding:'6rem 1.5rem', background:'var(--surface)' }}>
+            <div style={{ maxWidth:1280, margin:'0 auto' }}>
+              <AnimatedSection style={{ marginBottom:'3.5rem' }}>
+                <motion.div variants={fadeUp}><span className="section-tag">CAPABILITIES</span></motion.div>
+                <motion.h2 variants={fadeUp} style={{ fontFamily:'var(--font-display)', fontSize:'clamp(1.8rem,4vw,2.8rem)', fontWeight:800, color:'var(--text)', lineHeight:1.2, marginBottom:'.75rem' }}>
+                  Six vectors. One verdict.
+                </motion.h2>
+                <motion.p variants={fadeUp} style={{ fontSize:'1rem', color:'var(--text-muted)', maxWidth:480, lineHeight:1.8 }}>
+                  Every analysis triangulates across confidence, bias, conflict, sensitivity, AI-generation risk, and source recency — simultaneously.
+                </motion.p>
+              </AnimatedSection>
+              <AnimatedSection style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(100%,280px),1fr))', gap:'1.25rem' }}>
+                {[
+                  { icon:<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>, title:'Multi-Vector Analysis', desc:'Simultaneously scores Confidence, Bias, Conflict, Sensitivity, AI-Risk, and Recency using ML inference on retrieved live sources — not static databases.' },
+                  { icon:<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>, title:'Source Verification Feed', desc:'Retrieves and ranks articles from authoritative domains, overlays Fact Check API verdicts, and displays credibility scores with publish recency badges.' },
+                  { icon:<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>, title:'VisualLens™ — Image Analysis', desc:'Upload any image to detect AI-generation, deepfakes, or manipulated media. Returns a confidence score and heatmap overlay of suspicious regions.' },
+                  { icon:<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>, title:'Context Synthesis (RAG)', desc:'An LLM synthesizes retrieved evidence into a structured intelligence brief — citing sources inline, never fabricating claims.' },
+                  { icon:<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>, title:'Reliability Matrix', desc:'Six animated semi-circular gauges visualize each metric at-a-glance. Color-coded automatically — red for elevated risk, green for high confidence.' },
+                  { icon:<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>, title:'Real-Time Processing', desc:'FastAPI ML inference pipeline returns results in under 10 seconds. Beautiful skeleton loaders keep the experience fluid while analysis runs.' },
+                ].map((f, i) => <FeatureCard key={i} {...f} />)}
+              </AnimatedSection>
+            </div>
+          </section>
+
+          {/* ── HOW IT WORKS ── */}
+          <section id="how-it-works" style={{ padding:'6rem 1.5rem' }}>
+            <div style={{ maxWidth:1280, margin:'0 auto', display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(100%,400px),1fr))', gap:'4rem', alignItems:'start' }}>
+              <AnimatedSection>
+                <motion.div variants={fadeUp}><span className="section-tag">PIPELINE</span></motion.div>
+                <motion.h2 variants={fadeUp} style={{ fontFamily:'var(--font-display)', fontSize:'clamp(1.8rem,4vw,2.6rem)', fontWeight:800, color:'var(--text)', lineHeight:1.2, marginBottom:'1rem' }}>
+                  From claim to clarity in four steps.
+                </motion.h2>
+                <motion.p variants={fadeUp} style={{ color:'var(--text-muted)', lineHeight:1.85 }}>
+                  CAWNCADE AI never fabricates. Every insight is grounded in retrieved, timestamped evidence from indexed web sources — presented as probabilistic reliability, not fact.
+                </motion.p>
+              </AnimatedSection>
+              <AnimatedSection>
+                {[
+                  { title:'Submit a Claim or URL', desc:'Paste text, a URL (HTTPS only), or upload an image into the Command Center. The system validates input format before enabling analysis.' },
+                  { title:'Retrieval-Augmented Search', desc:'The RAG pipeline queries indexed web sources, ranks by credibility domain score, and filters by recency — returning the most contextually relevant evidence.' },
+                  { title:'Multi-Vector ML Scoring', desc:'FastAPI runs six parallel ML classifiers — Confidence, Bias, Conflict, Sensitivity, AI-Risk, Recency — against the retrieved corpus.' },
+                  { title:'Synthesis & Visualization', desc:'Results are synthesized into a structured intelligence brief, visualized in the Reliability Matrix, and displayed alongside source cards with fact-check status badges.' },
+                ].map((s, i, arr) => <StepCard key={i} num={i+1} {...s} isLast={i===arr.length-1} />)}
+              </AnimatedSection>
+            </div>
+          </section>
+
+          {/* ── CTA ── */}
+          <section id="about" style={{ padding:'7rem 1.5rem', position:'relative', overflow:'hidden', background:'var(--surface)' }}>
+            <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse at center,rgba(59,130,246,0.08) 0%,transparent 70%)', pointerEvents:'none' }} />
+            <div style={{ position:'relative', zIndex:1, maxWidth:700, margin:'0 auto', textAlign:'center' }}>
+              <AnimatedSection style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'1.5rem' }}>
+                <motion.div variants={fadeUp}>
+                  <span style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'.35rem .85rem', borderRadius:99, background:'var(--primary-dim)', border:'1px solid rgba(59,130,246,0.25)', color:'var(--accent)', fontFamily:'var(--font-mono)', fontSize:'.7rem', fontWeight:600, letterSpacing:'.1em' }}>
+                    <span className="status-dot" style={{ background:'var(--success)' }} />
+                    SYSTEM ONLINE — READY TO ANALYZE
+                  </span>
+                </motion.div>
+                <motion.h2 variants={fadeUp} style={{ fontFamily:'var(--font-display)', fontSize:'clamp(2rem,5vw,3.2rem)', fontWeight:900, color:'var(--text)', lineHeight:1.15 }}>
+                  Stop guessing.{' '}
+                  <span style={{ background:'linear-gradient(90deg,var(--primary),var(--accent))', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>Start knowing.</span>
+                </motion.h2>
+                <motion.p variants={fadeUp} style={{ color:'var(--text-muted)', fontSize:'1.05rem', lineHeight:1.85 }}>
+                  The dashboard is live. Paste a claim, a URL, or an image — and let CAWNCADE AI surface what the sources actually say.
+                </motion.p>
+                <motion.button
+                  variants={fadeUp}
+                  onClick={onLaunch}
+                  className="glow-btn"
+                  whileHover={{ scale:1.03 }} whileTap={{ scale:.96 }}
+                  style={{ display:'flex', alignItems:'center', gap:12, padding:'1rem 2rem', borderRadius:14, background:'var(--primary)', color:'#fff', fontFamily:'var(--font-display)', fontWeight:700, fontSize:'1.1rem', letterSpacing:'.02em' }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  Open CAWNCADE AI Dashboard
+                </motion.button>
+              </AnimatedSection>
+            </div>
+          </section>
+
+          {/* ── FOOTER ── */}
+          <footer style={{ padding:'2.5rem 1.5rem', borderTop:'1px solid var(--border)', background:'var(--bg)' }}>
+            <div style={{ maxWidth:1280, margin:'0 auto', display:'flex', flexWrap:'wrap', alignItems:'center', justifyContent:'space-between', gap:'1rem' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <Logo size={26} />
+                <span style={{ fontFamily:'var(--font-display)', fontWeight:800, color:'var(--text-muted)', fontSize:'.9rem' }}>
+                  CAWNCADE <span style={{ color:'var(--primary)' }}>AI</span>
+                </span>
+              </div>
+              <p style={{ fontSize:'.75rem', color:'var(--text-dim)', maxWidth:480, lineHeight:1.7, textAlign:'center' }}>
+                CAWNCADE AI provides probabilistic insights. It does not determine absolute truth. Results should assist human judgment, not replace it.
+              </p>
+              <p style={{ fontSize:'.72rem', color:'var(--text-dim)', fontFamily:'var(--font-mono)', flexShrink:0 }}>© 2026 CAWNCADE AI</p>
+            </div>
+          </footer>
+        </div>
+      );
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       DASHBOARD
+    ════════════════════════════════════════════════════════════════════ */
+
+    /* ── RadialGauge ── */
+    function RadialGauge({ value, label, sublabel, color, shouldAnimate }) {
+      const [displayed, setDisplayed] = useState(0);
+      const rafRef = useRef(null);
+      useEffect(() => {
+        if (!shouldAnimate) { setDisplayed(value); return; }
+        const dur = 1100, start = performance.now();
+        const step = (now) => {
+          const t = Math.min((now - start) / dur, 1);
+          const eased = 1 - Math.pow(1 - t, 3);
+          setDisplayed(value * eased);
+          if (t < 1) rafRef.current = requestAnimationFrame(step);
+        };
+        rafRef.current = requestAnimationFrame(step);
+        return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+      }, [value, shouldAnimate]);
+
+      const r = 50, cx = 70, cy = 62;
+      const toP = (a) => ({ x: cx + r * Math.cos((a * Math.PI) / 180), y: cy - r * Math.sin((a * Math.PI) / 180) });
+      const ts = toP(180), te = toP(0);
+      const track = `M ${ts.x} ${ts.y} A ${r} ${r} 0 1 1 ${te.x} ${te.y}`;
+      const endAngle = 180 - displayed * 180;
+      const pt = toP(endAngle);
+      const la = displayed >= 1 ? 1 : 0;
+      const arc = displayed <= 0.001 ? '' : `M ${ts.x} ${ts.y} A ${r} ${r} 0 ${la} 1 ${pt.x} ${pt.y}`;
+      const pct = Math.round(displayed * 100);
+
+      return (
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }} role="img" aria-label={`${label}: ${pct}%`}>
+          <svg viewBox="0 0 140 80" style={{ width:'100%', maxWidth:160, overflow:'visible' }}>
+            <path d={track} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="10" strokeLinecap="round" />
+            {arc && <>
+              <path d={arc} fill="none" stroke={color} strokeWidth="14" strokeLinecap="round" opacity=".18" />
+              <path d={arc} fill="none" stroke={color} strokeWidth="10" strokeLinecap="round" />
+            </>}
+            <text x={cx} y={cy+6} textAnchor="middle" fill={color} fontSize="20" fontWeight="700" fontFamily="'JetBrains Mono',monospace">{pct}%</text>
+          </svg>
+          <p style={{ fontFamily:'var(--font-display)', fontSize:'.875rem', fontWeight:700, color:'var(--text)', textAlign:'center' }}>{label}</p>
+          <span style={{ fontFamily:'var(--font-mono)', fontSize:'.68rem', color, background:`${color}22`, border:`1px solid ${color}44`, padding:'.2rem .6rem', borderRadius:99 }}>{sublabel}</span>
+        </div>
+      );
+    }
+
+    function getMetricColor(id, v) {
+      if (id === 'confidence' || id === 'recency') {
+        if (v >= .7) return 'var(--success)'; if (v >= .4) return 'var(--warning)'; return 'var(--alert)';
+      }
+      if (v >= .7) return 'var(--alert)'; if (v >= .4) return 'var(--warning)'; return 'var(--success)';
+    }
+
+    function getMetricSublabel(id, v) {
+      const map = {
+        confidence: v >= .7 ? 'High Confidence' : v >= .4 ? 'Moderate' : 'Low Confidence',
+        bias:       v >= .7 ? 'Strong Bias' : v >= .4 ? 'Partial Bias' : 'Low Bias',
+        conflict:   v >= .7 ? 'High Conflict' : v >= .4 ? 'Moderate' : 'Low Conflict',
+        sensitivity:v >= .7 ? 'Highly Sensitive' : v >= .4 ? 'Moderate' : 'Low Sensitivity',
+        aiRisk:     v >= .7 ? 'High AI-Risk' : v >= .4 ? 'Moderate AI-Risk' : 'Low AI-Risk',
+        recency:    v >= .7 ? 'Very Recent' : v >= .4 ? 'Moderate' : 'Outdated',
+      };
+      return map[id] || '';
+    }
+
+    /* ── Skeletons ── */
+    function SkeletonBlock({ h = 20, w = '100%', radius = 8, style = {} }) {
+      return <div className="shimmer" style={{ height:h, width:w, borderRadius:radius, ...style }} />;
+    }
+
+    function MetricsSkeleton() {
+      return (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(100%,160px),1fr))', gap:'1rem' }}>
+          {Array.from({length:6}).map((_,i) => (
+            <div key={i} style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, padding:'1.25rem', display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
+              <SkeletonBlock h={80} w={120} radius={99} />
+              <SkeletonBlock h={14} w={80} />
+              <SkeletonBlock h={22} w={110} radius={99} />
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    function SynthesisSkeleton() {
+      return (
+        <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderLeft:'3px solid var(--accent)', borderRadius:14, padding:'1.5rem', display:'flex', flexDirection:'column', gap:12 }}>
+          <SkeletonBlock h={12} w={200} />
+          <SkeletonBlock h={12} w="100%" />
+          <SkeletonBlock h={12} w="92%" />
+          <SkeletonBlock h={12} w="85%" />
+          <SkeletonBlock h={12} w="95%" />
+        </div>
+      );
+    }
+
+    function SourceCardSkeleton() {
+      return (
+        <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, padding:'1.25rem', display:'flex', flexDirection:'column', gap:12 }}>
+          <div style={{ display:'flex', gap:12, alignItems:'center' }}>
+            <SkeletonBlock h={22} w={22} radius={6} />
+            <SkeletonBlock h={14} w={120} />
+          </div>
+          <SkeletonBlock h={10} w="100%" />
+          <SkeletonBlock h={10} w="88%" />
+          <SkeletonBlock h={10} w={60} />
+        </div>
+      );
+    }
+
+    /* ── Citation chip ── */
+    function CitationChip({ id, label }) {
+      const scrollTo = () => document.getElementById(`source-${id}`)?.scrollIntoView({ behavior:'smooth', block:'center' });
+      return (
+        <button onClick={scrollTo} style={{
+          display:'inline-flex', alignItems:'center', gap:4, padding:'.2rem .55rem',
+          borderRadius:6, background:'var(--primary-dim)', border:'1px solid rgba(59,130,246,0.3)',
+          color:'var(--primary)', fontFamily:'var(--font-mono)', fontSize:'.72rem', fontWeight:600,
+          cursor:'pointer', transition:'all .15s', margin:'0 2px'
+        }}
+          onMouseEnter={e => { e.currentTarget.style.background='var(--primary)'; e.currentTarget.style.color='#fff'; }}
+          onMouseLeave={e => { e.currentTarget.style.background='var(--primary-dim)'; e.currentTarget.style.color='var(--primary)'; }}
+        >[{id}] {label}</button>
+      );
+    }
+
+    /* ── Summary text renderer ── */
+    function SummaryText({ text }) {
+      const sourceMap = { '[1]':'Reuters', '[2]':'Bloomberg', '[3]':'RT International', '[4]':'AP News' };
+      const lines = text.split('\n');
+      return (
+        <div style={{ fontFamily:'var(--font-body)', lineHeight:1.9, fontSize:'.9rem', color:'var(--text-muted)' }}>
+          {lines.map((line, i) => {
+            if (!line.trim()) return <br key={i} />;
+            const parts = line.split(/(\*\*[^*]+\*\*|\[\d+\])/g);
+            const rendered = parts.map((p, j) => {
+              if (p.startsWith('**') && p.endsWith('**')) return <strong key={j} style={{ color:'var(--text)', fontWeight:600 }}>{p.slice(2,-2)}</strong>;
+              if (/^\[\d+\]$/.test(p)) { const id = parseInt(p.slice(1,-1)); return <CitationChip key={j} id={id} label={sourceMap[p] || `Source ${id}`} />; }
+              return <span key={j}>{p}</span>;
+            });
+            if (line.startsWith('- ')) return <div key={i} style={{ display:'flex', gap:8, marginBottom:6 }}><span style={{ color:'var(--primary)', flexShrink:0, marginTop:2 }}>•</span><span>{rendered.slice(1)}</span></div>;
+            return <p key={i} style={{ marginBottom:'.5rem' }}>{rendered}</p>;
+          })}
+        </div>
+      );
+    }
+
+    /* ── Source card ── */
+    function SourceCard({ source }) {
+      const [expanded, setExpanded] = useState(false);
+      const credPct = Math.round(source.credibility * 100);
+      const credColor = source.credibility >= .75 ? 'var(--success)' : source.credibility >= .5 ? 'var(--warning)' : 'var(--alert)';
+      return (
+        <motion.div id={`source-${source.id}`} layout initial={{ opacity:0, y:16 }} animate={{ opacity:1, y:0, transition:{ duration:.35 } }}
+          whileHover={{ borderColor:'rgba(59,130,246,0.25)', boxShadow:'0 0 20px rgba(59,130,246,0.06)' }}
+          style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, padding:'1.25rem', display:'flex', flexDirection:'column', gap:'1rem', transition:'border-color .2s' }}
+        >
+          {/* Header */}
+          <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
+              <img src={`https://www.google.com/s2/favicons?domain=${source.domain}&sz=32`} alt="" width="22" height="22" style={{ borderRadius:4, flexShrink:0 }} onError={e => e.target.style.display='none'} />
+              <div style={{ minWidth:0 }}>
+                <div style={{ fontFamily:'var(--font-mono)', fontSize:'.83rem', fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{source.domain}</div>
+                <div style={{ fontFamily:'var(--font-mono)', fontSize:'.68rem', color:'var(--text-dim)', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginTop:2 }}>
+                  {source.publishDate}
+                  {source.isRecent && <span style={{ background:'var(--accent-dim)', color:'var(--accent)', border:'1px solid rgba(6,182,212,0.3)', padding:'.1rem .45rem', borderRadius:4, fontSize:'.62rem', fontWeight:600 }}>RECENT</span>}
+                </div>
+              </div>
+            </div>
+            {source.factCheckStatus && (
+              <span style={{
+                flexShrink:0, padding:'.3rem .7rem', borderRadius:99, fontSize:'.7rem', fontWeight:700, letterSpacing:'.04em', fontFamily:'var(--font-mono)',
+                background: source.factCheckStatus === 'DEBUNKED' ? 'var(--alert-dim)' : 'var(--success-dim)',
+                color: source.factCheckStatus === 'DEBUNKED' ? 'var(--alert)' : 'var(--success)',
+                border: `1px solid ${source.factCheckStatus === 'DEBUNKED' ? 'rgba(239,68,68,.35)' : 'rgba(16,185,129,.35)'}`,
+              }}>
+                {source.factCheckStatus === 'DEBUNKED' ? '⚠ DEBUNKED' : '✓ VERIFIED'}
+              </span>
+            )}
+          </div>
+          {/* Credibility */}
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <span style={{ fontFamily:'var(--font-mono)', fontSize:'.68rem', color:'var(--text-dim)', flexShrink:0, letterSpacing:'.06em' }}>CREDIBILITY</span>
+            <div style={{ flex:1, height:6, borderRadius:99, background:'rgba(255,255,255,0.05)', overflow:'hidden' }}>
+              <div style={{ height:'100%', width:`${credPct}%`, background:credColor, boxShadow:`0 0 8px ${credColor}66`, borderRadius:99, transition:'width .8s ease' }} />
+            </div>
+            <span style={{ fontFamily:'var(--font-mono)', fontSize:'.72rem', color:credColor, flexShrink:0, fontWeight:600 }}>{credPct}%</span>
+          </div>
+          {/* Text */}
+          <p style={{ fontSize:'.85rem', color:'var(--text-muted)', lineHeight:1.75, display:'-webkit-box', WebkitLineClamp: expanded ? 'none' : 3, WebkitBoxOrient:'vertical', overflow: expanded ? 'visible' : 'hidden' }}>
+            {source.fullText}
+          </p>
+          <button onClick={() => setExpanded(v => !v)} style={{ alignSelf:'flex-start', display:'flex', alignItems:'center', gap:6, color:'var(--primary)', fontFamily:'var(--font-mono)', fontSize:'.75rem', fontWeight:500, background:'none', border:'none', cursor:'pointer' }}>
+            {expanded
+              ? <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="18 15 12 9 6 15"/></svg>Collapse</>
+              : <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9"/></svg>Expand full source</>}
+          </button>
+        </motion.div>
+      );
+    }
+
+    /* ── VisualLens panel ── */
+    function VisualLensPanel({ imageUrl, result }) {
+      const sc = result.isAI ? 'var(--alert)' : 'var(--success)';
+      return (
+        <motion.div initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }} style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:16, overflow:'hidden' }}>
+          <div style={{ padding:'1rem 1.25rem', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:10 }}>
+            <div style={{ width:32, height:32, borderRadius:8, background:'var(--accent-dim)', border:'1px solid rgba(6,182,212,0.2)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+            </div>
+            <span style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:'.95rem', color:'var(--text)' }}>VisualLens™ Analysis</span>
+          </div>
+          <div style={{ display:'flex', flexWrap:'wrap' }}>
+            <div style={{ flex:'1 1 240px', position:'relative', background:'#000', minHeight:200 }}>
+              <img src={imageUrl} alt="Uploaded for analysis" style={{ width:'100%', height:'100%', objectFit:'cover', opacity:.8, display:'block' }} />
+              <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse at 60% 40%,rgba(239,68,68,.22) 0%,transparent 55%),radial-gradient(ellipse at 30% 70%,rgba(239,68,68,.12) 0%,transparent 40%)', mixBlendMode:'screen', pointerEvents:'none' }} />
+              <div style={{ position:'absolute', top:10, left:10, padding:'.25rem .6rem', borderRadius:6, background:'rgba(0,0,0,0.8)', color:'var(--alert)', fontFamily:'var(--font-mono)', fontSize:'.65rem', fontWeight:700, border:'1px solid rgba(239,68,68,.4)' }}>HEATMAP OVERLAY</div>
+            </div>
+            <div style={{ flex:'1 1 240px', padding:'1.5rem', display:'flex', flexDirection:'column', gap:'1.25rem', justifyContent:'center' }}>
+              <div>
+                <span style={{ fontFamily:'var(--font-mono)', fontSize:'.65rem', color:'var(--text-dim)', letterSpacing:'.1em', display:'block', marginBottom:6 }}>CLASSIFICATION RESULT</span>
+                <span style={{ fontFamily:'var(--font-display)', fontSize:'1.6rem', fontWeight:800, color:sc, letterSpacing:'-.01em' }}>{result.label}</span>
+              </div>
+              <div>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
+                  <span style={{ fontFamily:'var(--font-mono)', fontSize:'.75rem', color:'var(--text-muted)' }}>Detection Confidence</span>
+                  <span style={{ fontFamily:'var(--font-mono)', fontWeight:600, color:sc, fontSize:'.85rem' }}>{Math.round(result.confidence*100)}%</span>
+                </div>
+                <div style={{ height:8, borderRadius:99, background:'rgba(255,255,255,0.06)' }}>
+                  <div style={{ height:'100%', width:`${result.confidence*100}%`, background:sc, boxShadow:`0 0 10px ${sc}66`, borderRadius:99, transition:'width 1s ease' }} />
+                </div>
+              </div>
+              <div style={{ borderRadius:12, padding:'1rem', background: result.isAI ? 'var(--alert-dim)' : 'var(--success-dim)', border:`1px solid ${result.isAI ? 'rgba(239,68,68,.25)' : 'rgba(16,185,129,.25)'}` }}>
+                <div style={{ fontFamily:'var(--font-mono)', fontSize:'.65rem', fontWeight:700, color:sc, letterSpacing:'.08em', marginBottom:6 }}>
+                  {result.isAI ? '⚠ AI GENERATION INDICATORS DETECTED' : '✓ AUTHENTIC IMAGE INDICATORS'}
+                </div>
+                <p style={{ fontSize:'.82rem', color:'var(--text-muted)', lineHeight:1.65 }}>
+                  {result.isAI
+                    ? 'Frequency domain analysis, GAN artifact patterns, and EXIF metadata anomalies suggest this image was synthetically generated. Confidence is probabilistic — human review recommended.'
+                    : 'No significant synthetic generation artifacts detected. EXIF data is consistent with authentic capture. Visual noise patterns appear organic.'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      );
+    }
+
+    /* ── Mock data ── */
+    function buildMock(hasImage) {
+      return {
+        confidence:.72, bias:.58, conflict:.85, sensitivity:.41, aiRisk:.63, recency:.29,
+        summary:`**Analysis Summary — Context Reliability Report**
+
+The submitted claim exhibits **high conflict signals** (85%) across retrieved sources, suggesting that major reputable outlets are presenting materially different narratives around the same event.
+
+**Key findings:**
+- **Reuters** and **BBC** both reference the underlying data, but apply contradictory interpretations regarding causality. This divergence is a strong indicator of *selective framing* rather than factual error.
+- The **AI-Risk score** (63%) is elevated, meaning portions of the circulating content show linguistic patterns consistent with LLM-generated text — though this is not conclusive.
+- **Source recency** is low (29%), indicating that most retrieved corroborating evidence is more than 72 hours old, which may affect relevance for rapidly evolving situations.
+
+**Entities identified:** European Central Bank [1], Bloomberg Markets [2], RT International [3]
+
+**Reliability assessment:** Exercise caution. Cross-reference with [1] and [2] before drawing conclusions. [3] carries significant credibility penalties.`,
+        sources:[
+          { id:1, domain:'reuters.com', credibility:.91, publishDate:'2026-07-24', isRecent:true, factCheckStatus:'VERIFIED', fullText:'Global economic indicators show mixed signals as central banks adjust forward guidance amid persistent inflation uncertainty. Analysts diverge on interpretation of Q2 data, with some citing structural resilience while others warn of lagging transmission effects. The ECB held rates unchanged at its July meeting, citing progress toward the 2% target but noting downside risks to growth in peripheral eurozone economies.' },
+          { id:2, domain:'bbc.co.uk', credibility:.89, publishDate:'2026-07-22', isRecent:false, factCheckStatus:null, fullText:'Economists warn of potential misrepresentation in recent financial reporting, as headline figures obscure underlying sectoral stress visible in employment data. Bloomberg Intelligence notes that the aggregate GDP figure cited widely in media omits a one-off government expenditure spike that inflated the Q2 reading by approximately 0.4 percentage points.' },
+          { id:3, domain:'rt.com', credibility:.28, publishDate:'2026-07-23', isRecent:true, factCheckStatus:'DEBUNKED', fullText:"Western financial media accused of coordinated narrative suppression regarding structural fragility in EU banking sector, according to independent financial analysts cited by RT. The claim that ECB stress tests show systemic stability is described as 'deliberately misleading' — however, this framing has been directly contradicted by independent audits cited by Reuters and the Financial Times." },
+          { id:4, domain:'apnews.com', credibility:.88, publishDate:'2026-07-21', isRecent:false, factCheckStatus:null, fullText:'The Associated Press fact-check bureau finds no evidence supporting claims of coordinated media suppression. Reviewed primary ECB documentation confirms published stress test methodologies and notes that stress test results are publicly available on the ECB website.' },
+        ],
+        imageResult: hasImage ? { label:'AI-Generated', confidence:.84, isAI:true } : undefined
+      };
+    }
+
+    /* ── Section heading ── */
+    function SectionHeading({ icon, title, badge, accent = false }) {
+      const col = accent ? 'var(--accent)' : 'var(--primary)';
+      const bg  = accent ? 'var(--accent-dim)' : 'var(--primary-dim)';
+      const bd  = accent ? 'rgba(6,182,212,0.2)' : 'rgba(59,130,246,0.2)';
+      return (
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:'1.25rem', flexWrap:'wrap' }}>
+          <div style={{ width:28, height:28, borderRadius:8, background:bg, border:`1px solid ${bd}`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={col} strokeWidth="2.5">{icon}</svg>
+          </div>
+          <span style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:'.95rem', color:'var(--text)' }}>{title}</span>
+          {badge && <span style={{ padding:'.15rem .5rem', borderRadius:6, fontSize:'.68rem', background:bg, color:col, fontFamily:'var(--font-mono)', border:`1px solid ${bd}` }}>{badge}</span>}
+        </div>
+      );
+    }
+
+    /* ── Main Dashboard ── */
+    const METRICS = [
+      { id:'confidence', label:'Confidence' }, { id:'bias', label:'Bias' }, { id:'conflict', label:'Conflict' },
+      { id:'sensitivity', label:'Sensitivity' }, { id:'aiRisk', label:'AI Risk' }, { id:'recency', label:'Recency' },
+    ];
+
+    function Dashboard({ onBack }) {
+      const [text, setText] = useState('');
+      const [url, setUrl] = useState('');
+      const [image, setImage] = useState(null);
+      const [isAnalyzing, setIsAnalyzing] = useState(false);
+      const [result, setResult] = useState(null);
+      const [dragOver, setDragOver] = useState(false);
+      const fileInputRef = useRef(null);
+      const resultsRef = useRef(null);
+      const textareaRef = useRef(null);
+
+      const hasInput = text.trim().length > 0 || url.trim().length > 0 || image !== null;
+
+      // Auto-resize textarea
+      useEffect(() => {
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto';
+          textareaRef.current.style.height = Math.max(140, textareaRef.current.scrollHeight) + 'px';
+        }
+      }, [text]);
+
+      const handleFile = useCallback((file) => {
+        if (!file.type.startsWith('image/')) return;
+        const reader = new FileReader();
+        reader.onload = (e) => setImage({ file, preview: e.target.result });
+        reader.readAsDataURL(file);
+      }, []);
+
+      const handleAnalyze = async () => {
+        if (!hasInput || isAnalyzing) return;
+        setIsAnalyzing(true);
+        setResult(null);
+        await new Promise(r => setTimeout(r, 3000));
+        setResult(buildMock(image !== null));
+        setIsAnalyzing(false);
+        setTimeout(() => resultsRef.current?.scrollIntoView({ behavior:'smooth', block:'start' }), 120);
+      };
+
+      const handleReset = () => { setText(''); setUrl(''); setImage(null); setResult(null); setIsAnalyzing(false); };
+
+      return (
+        <div style={{ background:'var(--bg)', minHeight:'100vh', fontFamily:'var(--font-body)' }}>
+          {/* ── HEADER ── */}
+          <header style={{ position:'sticky', top:0, zIndex:50, display:'flex', alignItems:'center', justifyContent:'space-between', gap:'1rem', padding:'0 1rem', background:'rgba(6,9,15,0.92)', backdropFilter:'blur(16px)', borderBottom:'1px solid var(--border)', height:60, flexWrap:'wrap' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+              <button onClick={onBack} style={{ display:'flex', alignItems:'center', gap:6, color:'var(--text-muted)', fontFamily:'var(--font-mono)', fontSize:'.72rem', fontWeight:500, transition:'color .15s', padding:'.25rem .5rem', borderRadius:6 }}
+                onMouseEnter={e => e.currentTarget.style.color='var(--text)'}
+                onMouseLeave={e => e.currentTarget.style.color='var(--text-muted)'}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                Back
+              </button>
+              <div style={{ width:1, height:20, background:'var(--border)' }} />
+              <Logo size={24} />
+              <div>
+                <div style={{ fontFamily:'var(--font-display)', fontWeight:800, fontSize:'.9rem', color:'var(--text)', letterSpacing:'.04em', lineHeight:1.2 }}>CAWNCADE <span style={{ color:'var(--primary)' }}>AI</span></div>
+                <div style={{ fontFamily:'var(--font-mono)', fontSize:'.58rem', color:'var(--text-dim)', letterSpacing:'.06em' }}>ContextLens & VisualLens Interface</div>
+              </div>
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+              {result && (
+                <button onClick={handleReset} style={{ display:'flex', alignItems:'center', gap:6, padding:'.35rem .75rem', borderRadius:8, color:'var(--text-muted)', background:'var(--card)', border:'1px solid var(--border)', fontFamily:'var(--font-mono)', fontSize:'.72rem', transition:'all .15s' }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor='var(--border-hover)'}
+                  onMouseLeave={e => e.currentTarget.style.borderColor='var(--border)'}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                  New Analysis
+                </button>
+              )}
+              <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+                <span className="status-dot" />
+                <span style={{ fontFamily:'var(--font-mono)', fontSize:'.68rem', color:'var(--success)' }}>System Online</span>
+              </div>
+              <button aria-label="Settings" style={{ width:34, height:34, borderRadius:8, background:'var(--card)', border:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'center', transition:'all .15s' }}
+                onMouseEnter={e => e.currentTarget.style.borderColor='var(--border-hover)'}
+                onMouseLeave={e => e.currentTarget.style.borderColor='var(--border)'}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              </button>
+            </div>
+          </header>
+
+          <main style={{ maxWidth:1280, margin:'0 auto', padding:'2rem 1rem 4rem', display:'flex', flexDirection:'column', gap:'2rem' }}>
+            {/* ── COMMAND CENTER ── */}
+            <section>
+              <SectionHeading icon={<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>} title="Command Center" badge="INPUT LAYER" />
+              <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:16, overflow:'hidden' }}>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(100%,320px),1fr))' }}>
+                  {/* Left: text */}
+                  <div style={{ padding:'1.25rem', borderBottom:'1px solid var(--border)', display:'flex', flexDirection:'column', gap:10 }}>
+                    <label style={{ fontFamily:'var(--font-mono)', fontSize:'.65rem', color:'var(--text-dim)', letterSpacing:'.1em' }}>CLAIM / TEXT INPUT</label>
+                    <textarea
+                      ref={textareaRef}
+                      value={text}
+                      onChange={e => setText(e.target.value)}
+                      placeholder="Paste a claim, article excerpt, or social media post to analyze…"
+                      style={{ resize:'none', outline:'none', background:'rgba(255,255,255,0.03)', border:'1px solid var(--border)', borderRadius:10, padding:'1rem', color:'var(--text)', fontFamily:'var(--font-body)', fontSize:'.9rem', lineHeight:1.65, caretColor:'var(--primary)', transition:'border-color .2s', minHeight:140 }}
+                      onFocus={e => e.target.style.borderColor='rgba(59,130,246,0.4)'}
+                      onBlur={e => e.target.style.borderColor='var(--border)'}
+                    />
+                    {text.length > 0 && <span style={{ fontSize:'.65rem', color:'var(--text-dim)', fontFamily:'var(--font-mono)', alignSelf:'flex-end' }}>{text.length} chars</span>}
+                  </div>
+                  {/* Right: URL + image */}
+                  <div style={{ padding:'1.25rem', display:'flex', flexDirection:'column', gap:'1rem' }}>
+                    {/* URL */}
+                    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                      <label style={{ fontFamily:'var(--font-mono)', fontSize:'.65rem', color:'var(--text-dim)', letterSpacing:'.1em' }}>URL INPUT</label>
+                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                        <div style={{ position:'relative', flex:1 }}>
+                          <svg style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)' }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                          <input type="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://example.com/article"
+                            style={{ width:'100%', paddingLeft:32, paddingRight:12, paddingTop:10, paddingBottom:10, borderRadius:10, background:'rgba(255,255,255,0.03)', border:'1px solid var(--border)', color:'var(--text)', fontFamily:'var(--font-mono)', fontSize:'.8rem', outline:'none', transition:'border-color .2s' }}
+                            onFocus={e => e.target.style.borderColor='rgba(59,130,246,0.4)'}
+                            onBlur={e => e.target.style.borderColor='var(--border)'}
+                          />
+                        </div>
+                        <span style={{ flexShrink:0, padding:'.3rem .6rem', borderRadius:6, fontSize:'.65rem', fontWeight:700, background:'var(--success-dim)', color:'var(--success)', border:'1px solid rgba(16,185,129,.25)', fontFamily:'var(--font-mono)' }}>HTTPS</span>
+                      </div>
+                    </div>
+                    {/* Drag & drop */}
+                    <div style={{ display:'flex', flexDirection:'column', gap:8, flex:1 }}>
+                      <label style={{ fontFamily:'var(--font-mono)', fontSize:'.65rem', color:'var(--text-dim)', letterSpacing:'.1em' }}>VISUALLENS™ — IMAGE UPLOAD</label>
+                      <div
+                        style={{ borderRadius:10, border:`2px dashed ${dragOver ? 'var(--accent)' : image ? 'rgba(59,130,246,0.4)' : 'var(--border)'}`, background: dragOver ? 'var(--accent-dim)' : image ? 'var(--primary-dim)' : 'rgba(255,255,255,0.02)', minHeight:140, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:10, cursor:'pointer', position:'relative', overflow:'hidden', transition:'all .2s' }}
+                        onClick={() => fileInputRef.current?.click()}
+                        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                        onDragLeave={() => setDragOver(false)}
+                        onDrop={e => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+                      >
+                        {image ? (
+                          <>
+                            <img src={image.preview} alt="" style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', opacity:.35 }} />
+                            <div style={{ position:'relative', zIndex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
+                              <div style={{ display:'flex', alignItems:'center', gap:6, background:'rgba(0,0,0,0.75)', border:'1px solid rgba(59,130,246,.4)', borderRadius:99, padding:'.35rem .85rem' }}>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                                <span style={{ fontFamily:'var(--font-mono)', fontSize:'.68rem', color:'var(--primary)' }}>{image.file.name}</span>
+                              </div>
+                              <button onClick={e => { e.stopPropagation(); setImage(null); }} style={{ color:'var(--text-dim)', fontFamily:'var(--font-mono)', fontSize:'.65rem', background:'none', border:'none', cursor:'pointer' }}>remove</button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={dragOver ? 'var(--accent)' : 'var(--text-dim)'} strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+                            <span style={{ fontSize:'.82rem', color:'var(--text-muted)', textAlign:'center', padding:'0 1rem' }}>{dragOver ? 'Drop to upload' : 'Drag & drop an image or click to browse'}</span>
+                            <span style={{ fontSize:'.68rem', color:'var(--text-dim)', fontFamily:'var(--font-mono)' }}>JPG, PNG, WEBP — max 10MB</span>
+                          </>
+                        )}
+                        <input ref={fileInputRef} type="file" accept="image/*" style={{ display:'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {/* CTA bar */}
+                <div style={{ padding:'1rem 1.25rem', borderTop:'1px solid var(--border)', background:'rgba(0,0,0,0.2)', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'1rem', flexWrap:'wrap' }}>
+                  <p style={{ fontFamily:'var(--font-mono)', fontSize:'.72rem', color:'var(--text-dim)' }}>
+                    {hasInput ? `${[text.trim()&&'text', url.trim()&&'URL', image&&'image'].filter(Boolean).join(' + ')} ready for analysis` : 'Provide text, URL, or image to enable analysis'}
+                  </p>
+                  <button
+                    onClick={handleAnalyze}
+                    disabled={!hasInput || isAnalyzing}
+                    className={hasInput && !isAnalyzing ? 'glow-btn' : ''}
+                    style={{
+                      display:'flex', alignItems:'center', gap:10,
+                      padding:'.75rem 1.5rem', borderRadius:10,
+                      background: hasInput && !isAnalyzing ? 'var(--primary)' : 'rgba(255,255,255,0.05)',
+                      color: hasInput && !isAnalyzing ? '#fff' : 'var(--text-dim)',
+                      border: `1px solid ${hasInput && !isAnalyzing ? 'transparent' : 'var(--border)'}`,
+                      fontFamily:'var(--font-display)', fontWeight:700, fontSize:'.875rem',
+                      letterSpacing:'.04em', cursor: hasInput && !isAnalyzing ? 'pointer' : 'not-allowed',
+                      transition:'all .2s', flexShrink:0,
+                      minWidth:180, justifyContent:'center'
+                    }}
+                    aria-label="Analyze Context"
+                  >
+                    {isAnalyzing
+                      ? <><svg className="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Analyzing…</>
+                      : <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>Analyze Context</>
+                    }
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            {/* ── RESULTS ── */}
+            <div ref={resultsRef}>
+              <AnimatePresence mode="wait">
+                {(isAnalyzing || result) && (
+                  <motion.div key="results" initial={{ opacity:0, y:28 }} animate={{ opacity:1, y:0, transition:{ duration:.5, ease:[.22,1,.36,1] } }} exit={{ opacity:0 }} style={{ display:'flex', flexDirection:'column', gap:'2rem' }}>
+                    {/* Reliability Matrix */}
+                    <section>
+                      <SectionHeading icon={<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>} title="Reliability Matrix" badge="6-VECTOR ANALYSIS" />
+                      {isAnalyzing ? <MetricsSkeleton /> : result ? (
+                        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(100%,160px),1fr))', gap:'1rem' }}>
+                          {METRICS.map(m => {
+                            const val = result[m.id];
+                            const color = getMetricColor(m.id, val);
+                            const sublabel = getMetricSublabel(m.id, val);
+                            return (
+                              <motion.div key={m.id} initial={{ opacity:0, scale:.9 }} animate={{ opacity:1, scale:1, transition:{ duration:.35, delay:.08 } }}
+                                whileHover={{ scale:1.03, borderColor:color, boxShadow:`0 0 20px ${color}22` }}
+                                style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, padding:'1.25rem', transition:'border-color .2s, transform .2s' }}
+                              >
+                                <RadialGauge value={val} label={m.label} sublabel={sublabel} color={color} shouldAnimate={true} />
+                              </motion.div>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </section>
+
+                    {/* Context Synthesis */}
+                    <section>
+                      <SectionHeading icon={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></>} title="Context Synthesis" badge="RAG OUTPUT" accent />
+                      {isAnalyzing ? <SynthesisSkeleton /> : result ? (
+                        <motion.div initial={{ opacity:0 }} animate={{ opacity:1, transition:{ delay:.15 } }}
+                          style={{ background:'var(--card)', border:'1px solid var(--border)', borderLeft:'3px solid var(--accent)', borderRadius:14, padding:'1.5rem' }}
+                        >
+                          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:'1rem', paddingBottom:'1rem', borderBottom:'1px solid var(--border)' }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                            <span style={{ fontFamily:'var(--font-mono)', fontSize:'.65rem', color:'var(--accent)', letterSpacing:'.1em', fontWeight:600 }}>INTELLIGENCE BRIEF — PROBABILISTIC ANALYSIS</span>
+                          </div>
+                          <SummaryText text={result.summary} />
+                        </motion.div>
+                      ) : null}
+                    </section>
+
+                    {/* VisualLens */}
+                    {!isAnalyzing && result?.imageResult && image && (
+                      <section>
+                        <SectionHeading icon={<><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></>} title="VisualLens™ Output" accent />
+                        <VisualLensPanel imageUrl={image.preview} result={result.imageResult} />
+                      </section>
+                    )}
+
+                    {/* Source Feed */}
+                    <section>
+                      <SectionHeading icon={<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>} title="Source Verification Feed" badge={result ? `${result.sources.length} SOURCES RETRIEVED` : ''} />
+                      {isAnalyzing ? (
+                        <div style={{ display:'flex', flexDirection:'column', gap:'1rem' }}>
+                          {[0,1,2].map(i => <SourceCardSkeleton key={i} />)}
+                        </div>
+                      ) : result ? (
+                        <div style={{ display:'flex', flexDirection:'column', gap:'1rem' }}>
+                          {result.sources.map(s => <SourceCard key={s.id} source={s} />)}
+                        </div>
+                      ) : null}
+                    </section>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </main>
+
+          {/* Footer */}
+          <footer style={{ marginTop:'auto', padding:'1.5rem', borderTop:'1px solid var(--border)', background:'var(--surface)', textAlign:'center' }}>
+            <p style={{ fontSize:'.75rem', color:'var(--text-dim)', maxWidth:700, margin:'0 auto', lineHeight:1.75 }}>
+              <span style={{ color:'var(--warning)', fontFamily:'var(--font-mono)', fontWeight:600 }}>DISCLAIMER: </span>
+              CAWNCADE AI provides probabilistic insights based on retrieved data and multi-vector analysis. It does not determine absolute truth. Results should be used to assist human judgment, not replace it.
+            </p>
+          </footer>
+        </div>
+      );
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       APP ROOT
+    ════════════════════════════════════════════════════════════════════ */
+    function App() {
+      const [page, setPage] = useState('landing'); // 'landing' | 'dashboard'
+      return (
+        <AnimatePresence mode="wait">
+          {page === 'landing' ? (
+            <motion.div key="landing" initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }} transition={{ duration:.3 }}>
+              <LandingPage onLaunch={() => setPage('dashboard')} />
+            </motion.div>
+          ) : (
+            <motion.div key="dashboard" initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }} transition={{ duration:.3 }}>
+              <Dashboard onBack={() => setPage('landing')} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

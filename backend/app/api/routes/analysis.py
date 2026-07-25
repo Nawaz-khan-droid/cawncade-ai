@@ -20,10 +20,11 @@ class AnalyzeRequest(BaseModel):
     input_text: str = Field(..., min_length=1, max_length=5000, description="Text claim, news URL, or YouTube URL to analyze")
     input_type: str = Field(default="auto", description="auto | text | url | youtube")
     max_sources: int = Field(default=10, ge=1, le=20)
-
+    user_query: Optional[str] = Field(default=None, description="Optional user context to guide the analysis")
 
 class ImageAnalyzeRequest(BaseModel):
     image_base64: str = Field(..., min_length=1, description="Base64-encoded image data")
+    user_query: Optional[str] = Field(default=None, description="Optional user context for the image")
 
 
 class FeedbackRequest(BaseModel):
@@ -42,7 +43,8 @@ async def analyze(request: AnalyzeRequest):
         result = await orchestrator.process(
             input_text=request.input_text, 
             input_type=request.input_type, 
-            max_sources=request.max_sources
+            max_sources=request.max_sources,
+            user_query=request.user_query
         )
         return result
     except TypeError as e:
@@ -51,7 +53,8 @@ async def analyze(request: AnalyzeRequest):
             # Fallback: Try calling without max_sources if the internal function isn't updated yet
             result = await orchestrator.process(
                 input_text=request.input_text, 
-                input_type=request.input_type
+                input_type=request.input_type,
+                user_query=request.user_query
             )
             return result
         raise HTTPException(status_code=500, detail=f"Logic Error: {str(e)}")
@@ -62,7 +65,7 @@ async def analyze(request: AnalyzeRequest):
 @router.post("/analyze/image")
 async def analyze_image_endpoint(request: ImageAnalyzeRequest):
     try:
-        result = await orchestrator.process_image(image_base64=request.image_base64)
+        result = await orchestrator.process_image(image_base64=request.image_base64, user_query=request.user_query)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

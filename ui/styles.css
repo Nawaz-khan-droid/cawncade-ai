@@ -1,0 +1,99 @@
+@layer base {
+  body {
+    background-color: #0f1117;
+    color: #e2e8f0;
+    -webkit-font-smoothing: antialiased;
+    font-family: 'Inter', 'Roboto', sans-serif;
+  }
+}
+
+/* Custom styles */
+@layer components {
+  .glass-card {
+    background-color: #15171e;
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 1rem;
+    box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+    transition: all 300ms;
+  }
+  
+  .glass-card:hover {
+    transform: scale(1.02);
+    border-color: rgba(255,255,255,0.1);
+    box-shadow: 0 0 15px rgba(255,255,255,0.05);
+  }
+  
+  .btn-primary {
+    background-color: #3b82f6;
+    color: white;
+    font-weight: 500;
+    border-radius: 0.75rem;
+    transition: all 200ms;
+    box-shadow: 0 0 15px rgba(59,130,246,0.3);
+  }
+  
+  .btn-primary:hover:not(:disabled) {
+    background-color: #2563eb;
+    box-shadow: 0 0 25px rgba(59,130,246,0.5);
+  }
+  
+  .btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+
+  .btn-secondary {
+    background-color: #1a1c23;
+    color: #e2e8f0;
+    font-weight: 500;
+    border-radius: 0.75rem;
+    transition: all 200ms;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  
+  .btn-secondary:hover {
+    background-color: #23252d;
+  }
+  
+  .metric-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #94a3b8;
+    margin-top: 0.5rem;
+    letter-spacing: 0.025em;
+    text-transform: uppercase;
+    text-align: center;
+    width: 100%;
+  }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #23252d;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3b82f6;
+}
+
+/* Animations */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+@keyframes pulse {
+  50% { opacity: .5; }
+}
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}

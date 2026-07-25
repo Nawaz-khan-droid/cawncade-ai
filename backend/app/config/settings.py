@@ -39,9 +39,11 @@ class Settings(BaseSettings):
 
     # ── Hugging Face ──
     HUGGINGFACE_API_TOKEN: str = ""        # HF Secret: HUGGINGFACE_API_TOKEN
+    HUGGINGFACEHUB_API_TOKEN: str = ""     # Needed for Langchain
     HUGGINGFACE_INFERENCE_URL: str = "https://api-inference.huggingface.co/models/"
 
     # ── LLM (Synthesis Fallback — flan-t5 is secondary to Llama agent) ──
+    OPENROUTER_API_KEY: str = ""
     LLM_MODEL: str = "google/flan-t5-large"
     LLM_MAX_TOKENS: int = 1024
     LLM_TEMPERATURE: float = 0.3

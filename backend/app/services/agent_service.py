@@ -17,17 +17,29 @@ import httpx
 
 from langchain_openai import ChatOpenAI
 from langchain.agents import AgentExecutor, create_react_agent
+from langchain.prompts import PromptTemplate
 from langchain.tools import tool
-from langchain import hub
 from langchain_community.tools.ddg_search.tool import DuckDuckGoSearchRun
 from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
 from langchain_core.messages import AIMessage, HumanMessage
+from pydantic import Field
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.config.settings import get_settings
 from app.core.resilience import circuit_agent
 from app.utils.logger import log
 
 settings = get_settings()
+
+def load_prompt_layer(filename: str) -> str:
+    """Dynamically loads markdown prompt configuration files."""
+    prompt_path = os.path.join(os.path.dirname(__file__), "..", "modules", "prompts", filename)
+    try:
+        with open(prompt_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception as e:
+        log.warning(f"[AgentService] Failed to load prompt file {filename}: {e}")
+        return ""
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -221,46 +233,136 @@ class CawncadeAgent:
             return
 
         try:
-            api_token = (
-                settings.HUGGINGFACE_API_TOKEN
-                or os.getenv("HUGGINGFACE_API_TOKEN", "")
+            openrouter_key = (
+                getattr(settings, "OPENROUTER_API_KEY", None)
+                or os.getenv("OPENROUTER_API_KEY")
             )
+            
+            if not openrouter_key:
+                raise RuntimeError("OPENROUTER_API_KEY is missing from environment.")
 
-            # ── LLM: Llama 3.1 8B via HF Router ───────────────
-            # base_url uses the HF Router because it exposes the OpenAI
-            # chat-completions contract (/v1/chat/completions).
-            # This bypasses the old HF Serverless Inference API that
-            # caused Phase 2 task-compatibility failures (Flan-T5).
-            self.llm = ChatOpenAI(
-                base_url="https://router.huggingface.co/v1",
-                api_key=api_token,
-                model="meta-llama/Llama-3.1-8B-Instruct",
-                temperature=0,        # Zero hallucination — strict fact-checking
-                max_tokens=1024,
-            )
+            # ── Multi-Provider Hybrid Fallback Wrapper ─────────
+            try:
+                log.info("[Agent] 🚀 Launching Tier 1: OpenRouter (Llama 3.3-70B)...")
+                primary_llm = ChatOpenAI(
+                    base_url="https://openrouter.ai/api/v1",
+                    api_key=openrouter_key,
+                    model="meta-llama/llama-3.3-70b-instruct",
+                    temperature=0.01,
+                    max_tokens=1024,
+                    model_kwargs={"extra_headers": {"HTTP-Referer": "http://localhost:3000", "X-Title": "Cawncade AI"}}
+                )
+                primary_llm.invoke("ping")
+                self.llm = primary_llm
+            except Exception as e1:
+                log.warning(f"[Agent] ⚠️ Tier 1 connection dropped: {e1}. Cascading downstream...")
+                
+                # ── Tier 2: Hugging Face Router API + Groq LPU Engine ──
+                hf_token = getattr(settings, "HUGGINGFACEHUB_API_TOKEN", None) or getattr(settings, "HUGGINGFACE_API_TOKEN", None) or os.getenv("HUGGINGFACEHUB_API_TOKEN")
+                if not hf_token:
+                    from huggingface_hub import get_token
+                    hf_token = get_token()
+
+                if hf_token:
+                    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), reraise=True)
+                    def _init_hf_groq():
+                        log.info("[Agent] 🛡️ Launching Tier 2: Hugging Face Router → Groq LPU (70B)...")
+                        llm = ChatOpenAI(
+                            api_key=hf_token,
+                            base_url="https://router.huggingface.co/v1",
+                            model="meta-llama/Llama-3.3-70B-Instruct:groq",
+                            temperature=0.01,
+                            timeout=30
+                        )
+                        llm.invoke("ping")
+                        return llm
+                        
+                    try:
+                        self.llm = _init_hf_groq()
+                        log.info("[Agent] ✅ Tier 2 (Groq) armed successfully.")
+                    except Exception as e2:
+                        log.warning(f"[Agent] ⚠️ Tier 2 Groq allocation saturated: {e2}. Routing to DeepInfra fallback...")
+                        
+                        # ── Tier 3: Hugging Face Router API + DeepInfra Engine ──
+                        @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), reraise=True)
+                        def _init_hf_deepinfra():
+                            log.info("[Agent] 🛡️ Launching Tier 3: Hugging Face Router → DeepInfra (Gemma-3-27B)...")
+                            llm = ChatOpenAI(
+                                api_key=hf_token,
+                                base_url="https://router.huggingface.co/v1",
+                                model="google/gemma-3-27b-it:deepinfra",
+                                temperature=0.01,
+                                timeout=30
+                            )
+                            llm.invoke("ping")
+                            return llm
+                            
+                        try:
+                            self.llm = _init_hf_deepinfra()
+                            log.info("[Agent] ✅ Tier 3 (DeepInfra) armed successfully.")
+                        except Exception as e3:
+                            log.warning(f"[Agent] 🔴 Tier 3 pipeline rejected request: {e3}. Dropping to Offline Mode.")
+                            self.llm = None
+                else:
+                    log.warning(f"[Agent] 🔴 Critical Failure: No HF token provided. Agent will run in NO-LLM mode.")
+                    self.llm = None
 
             # ── Tool Stack ─────────────────────────────────────
             self.tools = self._build_tools()
 
+            # ── Dynamic Prompt Assembly ────────────────────────────────
+            SYSTEM_IDENTITY = load_prompt_layer("system_prompt.md")
+            TOOL_SKILLS = load_prompt_layer("skills.md")
+            SAFETY_GUARDRAILS = load_prompt_layer("guardrails.md")
+
+            master_agent_prompt = f"{SYSTEM_IDENTITY}\n\n{TOOL_SKILLS}\n\n{SAFETY_GUARDRAILS}"
+
             # ── Prompt (ReAct) ─────────────────────────────────
-            self.prompt = hub.pull("hwchase17/react")
+            # Decoupled from langchainhub to prevent dependency crashes
+            react_template = f"""{master_agent_prompt}
+
+Answer the following questions as best you can. You have access to the following tools:
+
+{{tools}}
+
+Use the following format:
+
+Question: the input question you must answer
+Thought: you should always think about what to do
+Action: the action to take, should be one of [{{tool_names}}]
+Action Input: the input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can repeat N times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
+
+Begin!
+
+Question: {{input}}
+Thought:{{agent_scratchpad}}"""
+            self.prompt = PromptTemplate.from_template(react_template)
 
             # ── Agent + Executor ───────────────────────────────
-            agent = create_react_agent(self.llm, self.tools, self.prompt)
-            self._agent_executor = AgentExecutor(
-                agent=agent,
-                tools=self.tools,
-                verbose=True,
-                handle_parsing_errors=True,
-                max_iterations=settings.AGENT_MAX_ITERATIONS,  # BUG-04 fixed
-            )
+            if self.llm:
+                agent = create_react_agent(self.llm, self.tools, self.prompt)
+                self._agent_executor = AgentExecutor(
+                    agent=agent,
+                    tools=self.tools,
+                    verbose=True,
+                    handle_parsing_errors=True,
+                    max_iterations=settings.AGENT_MAX_ITERATIONS,  # BUG-04 fixed
+                )
 
-            self._initialized = True
-            tool_names = [t.name for t in self.tools]
-            log.info(
-                f"[Agent] ✅ Llama 3.1 8B + Triple-Tool Engine armed. "
-                f"Tools: {tool_names} | max_iter={settings.AGENT_MAX_ITERATIONS}"
-            )
+                self._initialized = True
+                tool_names = [t.name for t in self.tools]
+                log.info(
+                    f"[Agent] ✅ Llama Engine armed. "
+                    f"Tools: {tool_names} | max_iter={settings.AGENT_MAX_ITERATIONS}"
+                )
+            else:
+                self._agent_executor = None
+                self._initialized = True
+                log.warning("[Agent] ⚠️ Operating in NO-LLM fallback mode. Deep synthesis is disabled.")
 
         except Exception as e:
             log.error(f"[Agent] ❌ Engine Initialization Failed: {e}")
@@ -286,24 +388,8 @@ class CawncadeAgent:
         )
 
         agent_input = (
-            f"You are a professional fact-checker. Verify this NEWS CLAIM: {query}\n\n"
-            f"PRE-FETCHED EVIDENCE (from initial pipeline search):\n"
-            f"{evidence_context}\n\n"
-            f"YOUR AVAILABLE TOOLS:\n{tool_manifest}\n\n"
-            f"STEP-BY-STEP INSTRUCTIONS:\n"
-            f"1. Use duckduckgo_search to find verified news reports from 2026. Append 'latest news' to EVERY search query you generate.\n"
-            f"2. IGNORE results from jewelry brands, shopping sites, or viral videos.\n"
-            f"3. If a search result URL looks relevant but its SNIPPET IS TOO SHORT, "
-            f"   use the process_url tool to read the FULL article text.\n"
-            f"   Format: process_url('https://example.com/article-url')\n"
-            f"4. You have multiple search tools. If DuckDuckGo returns no results, immediately try serper_search or tavily_news_search.\n"
-            f"5. You may also use you_search for AI-powered wide-web context gathering.\n"
-            f"6. Prioritize reputable outlets: Reuters, AP News, BBC, PTI, The Hindu, Livemint.\n"
-            f"7. Issue a clear VERDICT: True, False, or Mixed.\n"
-            f"8. MANDATORY: Cite the full source URL for every fact in your final answer.\n"
-            f"9. FALLBACK RULE: If you cannot scrape a URL, you MUST generate a summary based on the snippets retrieved. Use exactly this format:\n"
-            f"   ### AI SUMMARY\n"
-            f"   [Summary Content]"
+            f"USER NEW MESSAGE (Claim to verify): {query}\n\n"
+            f"PRE-FETCHED EVIDENCE:\n{evidence_context}"
         )
 
         async def _call():
@@ -398,7 +484,7 @@ class CawncadeChatAgent:
             )
             output = response.get("output", "")
         else:
-            output = "Agent Engine not initialized."
+            output = "Agent Engine initialization failed. Please check your OpenRouter or HuggingFace API tokens in the backend .env file. Without them, the agent cannot respond."
             
         history.append(AIMessage(content=output))
         return {"output": output}

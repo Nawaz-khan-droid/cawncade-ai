@@ -1,98 +1,175 @@
+@import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+@import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --bg: #f8fafc;
+    --surface: #ffffff;
+    --card: #f1f5f9;
+    --card-alt: #e2e8f0;
+    --border: rgba(59,130,246,0.15);
+    --border-hover: rgba(59,130,246,0.3);
+    --primary: #3b82f6;
+    --primary-dim: rgba(59,130,246,0.1);
+    --primary-glow: rgba(59,130,246,0.2);
+    --accent: #60a5fa;
+    --accent-dim: rgba(96,165,250,0.1);
+    --success: #10b981;
+    --success-dim: rgba(16,185,129,0.1);
+    --warning: #f59e0b;
+    --warning-dim: rgba(245,158,11,0.1);
+    --alert: #ef4444;
+    --alert-dim: rgba(239,68,68,0.1);
+    --text: #0f172a;
+    --text-muted: #64748b;
+    --text-dim: #94a3b8;
+    --font-display: 'Exo 2', sans-serif;
+    --font-body: 'Inter', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  .dark {
+    --bg: #06090f;
+    --surface: #090e1b;
+    --card: #0d1424;
+    --card-alt: #111b30;
+    --border: rgba(59,130,246,0.12);
+    --border-hover: rgba(59,130,246,0.28);
+    --primary: #3b82f6;
+    --primary-dim: rgba(59,130,246,0.18);
+    --primary-glow: rgba(59,130,246,0.35);
+    --accent: #06b6d4;
+    --accent-dim: rgba(6,182,212,0.15);
+    --success: #10b981;
+    --success-dim: rgba(16,185,129,0.15);
+    --warning: #f59e0b;
+    --warning-dim: rgba(245,158,11,0.15);
+    --alert: #ef4444;
+    --alert-dim: rgba(239,68,68,0.15);
+    --text: #e2e8f0;
+    --text-muted: #94a3b8;
+    --text-dim: #4a5568;
+  }
+
   body {
-    @apply bg-surface-950 text-slate-200;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    @apply bg-background-light text-textMain-light dark:bg-background-dark dark:text-textMain-dark antialiased transition-colors duration-300;
+    background-color: var(--bg);
+    color: var(--text);
   }
 }
 
-/* Custom styles */
+/* ── Keyframes from standalone ── */
+@keyframes shimmer {
+  0%   { background-position: -700px 0; }
+  100% { background-position:  700px 0; }
+}
+@keyframes pulse-glow {
+  0%,100% { opacity:1; box-shadow:0 0 6px 2px var(--success); }
+  50%      { opacity:.55; box-shadow:0 0 12px 4px var(--success); }
+}
+@keyframes pulse-primary {
+  0%,100% { box-shadow:0 0 12px 2px var(--primary-glow); }
+  50%      { box-shadow:0 0 28px 8px var(--primary-glow); }
+}
+@keyframes float {
+  0%,100% { transform:translateY(0); }
+  50%      { transform:translateY(-12px); }
+}
+@keyframes scan-line {
+  0%   { transform:translateY(-100%); opacity:0; }
+  10%  { opacity:.6; }
+  90%  { opacity:.6; }
+  100% { transform:translateY(600%); opacity:0; }
+}
+@keyframes grid-drift {
+  0%   { background-position:0 0; }
+  100% { background-position:40px 40px; }
+}
+@keyframes orbit {
+  from { transform:rotate(0deg); }
+  to   { transform:rotate(360deg); }
+}
+
+.shimmer {
+  background: linear-gradient(90deg, var(--card) 25%, var(--card-alt) 50%, var(--card) 75%);
+  background-size:700px 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+.status-dot {
+  width:8px; height:8px;
+  background:var(--success);
+  border-radius:50%;
+  animation: pulse-glow 2s ease-in-out infinite;
+  flex-shrink:0;
+}
+.glow-btn { animation: pulse-primary 3s ease-in-out infinite; }
+.float-anim { animation: float 6s ease-in-out infinite; }
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(59,130,246,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59,130,246,0.05) 1px, transparent 1px);
+  background-size:40px 40px;
+  animation: grid-drift 8s linear infinite;
+}
+.section-tag {
+  display:inline-block;
+  font-family:var(--font-mono);
+  font-size:.7rem;
+  font-weight:600;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--accent);
+  padding:.25rem .75rem;
+  border-radius:99px;
+  background:var(--accent-dim);
+  border:1px solid rgba(6,182,212,0.25);
+  margin-bottom:.75rem;
+}
+
+
 @layer components {
   .glass-card {
-    @apply bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl;
+    @apply bg-card-light/80 dark:bg-card-dark/80 backdrop-blur-xl border border-borderBase-light dark:border-borderBase-dark rounded-2xl shadow-lg transition-all duration-300;
+  }
+  
+  .glass-card:hover {
+    @apply bg-cardHover-light/80 dark:bg-cardHover-dark/80 border-primary/30 shadow-[0_0_20px_rgba(59,130,246,0.1)];
   }
   
   .btn-primary {
-    @apply bg-brand-500 hover:bg-brand-600 text-white font-medium rounded-xl transition-all duration-200 hover:shadow-lg hover:shadow-brand-500/25;
+    @apply bg-primary hover:bg-primary-hover text-white font-medium rounded-xl transition-all duration-200 active:scale-95 shadow-[0_0_15px_rgba(59,130,246,0.3)] hover:shadow-[0_0_25px_rgba(59,130,246,0.5)];
+  }
+  
+  .btn-primary:disabled {
+    @apply opacity-50 cursor-not-allowed hover:bg-primary active:scale-100 shadow-none hover:shadow-none;
   }
 
   .btn-secondary {
-    @apply bg-white/5 hover:bg-white/10 text-white border border-white/10 font-medium rounded-xl transition-all duration-200;
+    @apply bg-surface-light dark:bg-surface-dark hover:bg-cardHover-light dark:hover:bg-cardHover-dark text-textMain-light dark:text-textMain-dark font-medium rounded-xl transition-all duration-200 border border-borderBase-light dark:border-borderBase-dark active:scale-95;
+  }
+  
+  .nav-tab {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 text-textMuted-light dark:text-textMuted-dark hover:bg-primary/10 hover:text-primary;
+  }
+  
+  .nav-tab.active {
+    @apply bg-primary/20 text-primary border border-primary/30 shadow-[0_0_10px_rgba(59,130,246,0.2)];
   }
 
-  .gradient-text {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-brand-400 to-cyan-400 font-bold;
+  .glow-text {
+    @apply text-primary drop-shadow-[0_0_8px_rgba(59,130,246,0.6)];
   }
 }
 
-/* --- GOOGLE CUSTOM SEARCH (CSE) OVERRIDES --- */
-/* This makes the Google search bar match your Cyberpunk theme */
-
-.gsc-control-cse {
-  background-color: transparent !important;
-  border: none !important;
-  padding: 0 !important;
-  font-family: inherit !important;
-}
-
-.gsc-input-box {
-  background-color: rgba(255, 255, 255, 0.03) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  border-radius: 12px !important;
-  overflow: hidden;
-}
-
-input.gsc-input {
-  background: none !important;
-  color: #e2e8f0 !important; /* slate-200 */
-  padding-left: 10px !important;
-}
-
-.gsc-search-button-v2 {
-  background-color: #3b82f6 !important; /* brand-500 */
-  border-radius: 0 10px 10px 0 !important;
-  border: none !important;
-  padding: 10px 16px !important;
-  margin-top: 0 !important;
-}
-
-.gsc-search-button-v2:hover {
-  background-color: #2563eb !important; /* brand-600 */
-}
-
-/* Hide branding and unnecessary elements */
-.gcsc-branding, .gsc-adBlock {
-  display: none !important;
-}
-
-/* --- ANIMATIONS & UI --- */
-
-@keyframes fade-in {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.animate-fade-in {
-  animation: fade-in 0.5s ease-out;
-}
-
-/* Custom Scrollbar */
-::-webkit-scrollbar { 
-  width: 6px; 
-}
-
-::-webkit-scrollbar-track { 
-  background: transparent; 
-}
-
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { 
-  background: rgba(255, 255, 255, 0.1); 
-  border-radius: 3px; 
+  @apply bg-cardHover-light dark:bg-cardHover-dark rounded-full;
 }
-
-::-webkit-scrollbar-thumb:hover { 
-  background: rgba(255, 255, 255, 0.2); 
-}
+::-webkit-scrollbar-thumb:hover { @apply bg-primary; }

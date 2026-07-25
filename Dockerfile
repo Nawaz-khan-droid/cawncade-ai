@@ -1,42 +1,43 @@
+# ==========================================
 # STAGE 1: Build the React Frontend
-FROM node:20-alpine AS build-frontend
+# ==========================================
+FROM node:20-alpine AS frontend-builder
 WORKDIR /app/frontend
-COPY frontend/package.json frontend/package-lock.json* ./
+
+# Install dependencies first for layer caching
+COPY frontend/package*.json ./
 RUN npm install
-COPY frontend/ .
+
+# Copy source and build
+COPY frontend/ ./
 RUN npm run build
 
-# STAGE 2: Build the Backend & Serve
+# ==========================================
+# STAGE 2: Setup FastAPI Backend
+# ==========================================
 FROM python:3.11-slim
 WORKDIR /app
 
-# Install system dependencies for AI/Vision
-# Stage 2 - Use this instead of the old mesa-glx
-RUN apt-get update && apt-get install -y \
-    libgl1 \
-    libglib2.0-0 \
+# Install necessary system libraries (required by FAISS/PyTorch if needed, and Tesseract for Phase 4 OCR)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    tesseract-ocr \
+    libtesseract-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-COPY backend/requirements.txt .
+COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy Backend code
-COPY backend/ .
+# Copy the entire backend directory
+COPY backend/ ./backend/
 
-# Copy built frontend from Stage 1 into the backend's static folder
-# This ensures FastAPI can see the React build
-COPY --from=build-frontend /app/frontend/dist /app/static
+# Copy the compiled React App from Stage 1 into the FastAPI static folder
+# main.py looks for: os.path.join(..., "..", "static") -> backend/static
+COPY --from=frontend-builder /app/frontend/dist ./backend/static
 
-# Persistent Storage & Permissions
-RUN mkdir -p /data && chmod 777 /data
+# IMPORTANT: Render STRICTLY requires port 10000
+EXPOSE 10000
 
-# Environment
-ENV ENVIRONMENT=production \
-    PYTHONUNBUFFERED=1 \
-    PORT=7860
-
-EXPOSE 7860
-
-# Start FastAPI on the mandatory HF port
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]
+# Run the Uvicorn server on port 10000
+CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "10000"]

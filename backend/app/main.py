@@ -7,10 +7,10 @@ from .api.routes import analysis, auth, admin # Ensure these imports match your 
 
 app = FastAPI(title="CAWNCADE AI v3.0")
 
-# 1. Wide CORS for Hugging Face subdomains
+# 1. Wide CORS for Hugging Face subdomains & Local Vite Server
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173", "https://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
