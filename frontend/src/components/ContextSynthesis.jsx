@@ -64,8 +64,8 @@ export default function ContextSynthesis({ summary, isLoading }) {
         <h2 className="text-xl font-semibold text-white">Context Synthesis</h2>
       </div>
       
-      <div className="prose prose-invert max-w-none text-text leading-relaxed text-sm md:text-base">
-        <p className="whitespace-pre-wrap">{parseMarkdown(summary)}</p>
+      <div className="prose prose-invert max-w-none text-text leading-relaxed text-sm md:text-base w-full overflow-hidden">
+        <p className="whitespace-pre-wrap break-words">{parseMarkdown(summary)}</p>
       </div>
     </div>
   );
