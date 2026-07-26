@@ -32,8 +32,33 @@ try:
 except ImportError:
     pass
 
+def extract_local_entities(text: str) -> dict:
+    """Extracts People, Organizations, Locations, & Dates locally via NLTK/regex."""
+    entities = {"people": [], "organizations": [], "locations": [], "dates": []}
+    try:
+        import nltk
+        words = nltk.word_tokenize(text[:2000])
+        pos_tags = nltk.pos_tag(words)
+        chunks = nltk.ne_chunk(pos_tags)
+        
+        for chunk in chunks:
+            if hasattr(chunk, 'label'):
+                name = " ".join(c[0] for c in chunk)
+                label = chunk.label()
+                if label in ("PERSON",) and name not in entities["people"]:
+                    entities["people"].append(name)
+                elif label in ("ORGANIZATION", "ORGANISATION") and name not in entities["organizations"]:
+                    entities["organizations"].append(name)
+                elif label in ("GPE", "LOCATION") and name not in entities["locations"]:
+                    entities["locations"].append(name)
+    except Exception:
+        date_matches = re.findall(r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4}\b", text, re.I)
+        entities["dates"] = list(set(date_matches[:5]))
+    return entities
+
+
 def generate_local_nlp_summary(scraped_evidence_text: str, num_sentences: int = 3) -> str:
-    """Generates an objective summary of web evidence locally on CPU via NLP."""
+    """Generates an objective summary + entity breakdown of web evidence locally on CPU via NLP."""
     if not scraped_evidence_text.strip() or len(scraped_evidence_text) < 50:
         return "Insufficient live web data retrieved to synthesize an empirical summary."
         
@@ -43,10 +68,19 @@ def generate_local_nlp_summary(scraped_evidence_text: str, num_sentences: int = 
         summary_sentences = summarizer(parser.document, num_sentences)
         compiled_summary = " ".join([str(sentence) for sentence in summary_sentences])
         
+        entities = extract_local_entities(scraped_evidence_text)
+        people_str = ", ".join(entities["people"][:5]) or "None detected"
+        orgs_str = ", ".join(entities["organizations"][:5]) or "None detected"
+        locs_str = ", ".join(entities["locations"][:5]) or "None detected"
+
         return (
-            f"### 📊 Local Computational Analysis\n"
-            f"*This baseline summary was computed locally on the container server via extractive statistical NLP metrics (LexRank).*\n\n"
-            f"{compiled_summary}"
+            f"### 📊 Local Computational Evidence Analysis (Tier 4 Offline Mode)\n"
+            f"*Note: AI LLM reasoning was unavailable; showing local extractive NLP synthesis (LexRank).* \n\n"
+            f"**Extracted Key Sentences:**\n{compiled_summary}\n\n"
+            f"**Detected Entities:**\n"
+            f"- 👤 **Key People**: {people_str}\n"
+            f"- 🏢 **Organizations**: {orgs_str}\n"
+            f"- 📍 **Locations**: {locs_str}"
         )
     except Exception as e:
         return f"Local statistical synthesis bypassed due to structural anomaly: {str(e)}"

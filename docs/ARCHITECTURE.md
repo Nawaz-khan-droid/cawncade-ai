@@ -7,21 +7,24 @@
 
 ## Table of Contents
 1. [Project Overview](#1-project-overview)
-2. [High-Level System Architecture](#2-high-level-system-architecture)
-3. [Input Classification & Verification Flowchart](#3-input-classification--verification-flowchart)
-4. [Complete URL Fact-Checking Pipeline](#4-complete-url-fact-checking-pipeline)
-5. [Extraction Result State Machine](#5-extraction-result-state-machine)
-6. [Backend Architecture](#6-backend-architecture)
-7. [Frontend Architecture](#7-frontend-architecture)
-8. [LLM Provider Architecture](#8-llm-provider-architecture)
-9. [Extraction Architecture](#9-extraction-architecture)
-10. [Security Architecture](#10-security-architecture)
-11. [Rate Limiting & Resilience Architecture](#11-rate-limiting--resilience-architecture)
-12. [Testing Documentation](#12-testing-documentation)
-13. [User Use Cases](#13-user-use-cases)
-14. [Deployment Architecture](#14-deployment-architecture)
-15. [Performance & Latency Budget](#15-performance--latency-budget)
-16. [Architecture Update Policy](#16-architecture-update-policy)
+2. [Global System Architecture](#2-global-system-architecture)
+3. [Decoupled Input Pipeline Architectures](#3-decoupled-input-pipeline-architectures)
+   - [3.1 Global Input Classifier Router](#31-global-input-classifier-router)
+   - [3.2 ContextLens Pipeline (Text & URLs)](#32-contextlens-pipeline-text--urls)
+   - [3.3 VisualLens Pipeline (Images & Forensics)](#33-visuallens-pipeline-images--forensics)
+   - [3.4 YouTube Pipeline (Dual-Stream Transcripts)](#34-youtube-pipeline-dual-stream-transcripts)
+4. [Extraction Result State Machine](#4-extraction-result-state-machine)
+5. [Backend Architecture](#5-backend-architecture)
+6. [Frontend Architecture](#6-frontend-architecture)
+7. [LLM Provider Architecture](#7-llm-provider-architecture)
+8. [Extraction Architecture](#8-extraction-architecture)
+9. [Security Architecture](#9-security-architecture)
+10. [Rate Limiting & Resilience Architecture](#10-rate-limiting--resilience-architecture)
+11. [Verification Matrix](#11-verification-matrix)
+12. [User Use Cases](#12-user-use-cases)
+13. [Deployment Architecture](#13-deployment-architecture)
+14. [Performance & Latency Budget](#14-performance--latency-budget)
+15. [Architecture Update Policy](#15-architecture-update-policy)
 
 ---
 
@@ -32,8 +35,8 @@ CAWNCADE AI is a multi-tiered, fault-tolerant news verification platform and cla
 ### Supported Inputs
 - **Text Claims**: Raw text statements, news excerpts, or viral social media posts (Up to 5,000 characters).
 - **Article URLs**: News article links validated against SSRF protection rules and parsed via a hybrid extraction pipeline.
-- **YouTube URLs**: YouTube video links processed via dual-stream API and transcript extraction.
-- **Images**: Visual files analyzed via HuggingFace Inference API vision models (ViT/SigLIP2) and local OCR pre-processing (pytesseract).
+- **YouTube URLs**: YouTube video links processed via dual-stream API and transcript extraction (`youtube_service.py`).
+- **Images**: Visual files analyzed via HuggingFace Inference API vision models (ViT/SigLIP2) and local OCR pre-processing (`image_service.py`).
 
 ### Verified Tech Stack (Codebase Reality Audit)
 - **Frontend**: React 18, Vite, Tailwind CSS, Framer Motion, Lucide Icons.
@@ -43,13 +46,13 @@ CAWNCADE AI is a multi-tiered, fault-tolerant news verification platform and cla
   1. Tier 1: OpenRouter (`nvidia/nemotron-3-super-120b-a12b:free`)
   2. Tier 2: HuggingFace Router Groq (`meta-llama/Llama-3.3-70B-Instruct:groq`)
   3. Tier 3: HuggingFace Router DeepInfra (`google/gemma-3-27b-it:deepinfra`)
-  4. Tier 4: Offline No-LLM Mode (Local LexRank Extractive NLP via `sumy`)
+  4. Tier 4: Offline No-LLM Mode (Local Extractive LexRank NLP + Entity Extraction via `sumy` & `extract_local_entities`)
 - **Semantic Vector Cache**: FAISS (`faiss-cpu`) + `sentence-transformers/all-MiniLM-L6-v2` (`app/services/cache_service.py`).
 - **Resilience**: Custom state-machine CircuitBreaker (`app/core/resilience.py`), Tenacity exponential backoff retries.
 
 ---
 
-## 2. High-Level System Architecture
+## 2. Global System Architecture
 
 ```mermaid
 flowchart TD
@@ -97,93 +100,129 @@ flowchart TD
 
 ---
 
-## 3. Input Classification & Verification Flowchart
+## 3. Decoupled Input Pipeline Architectures
+
+### 3.1 Global Input Classifier Router
 
 ```
                  User Input
                      |
                      ↓
-            Input Classification
+            Input Classifier (orchestrator.py)
                      |
-        +------------+-------------+
-        |                          |
-      Text                       URL
-        |                          |
-        ↓                          ↓
- Direct analysis          URL validation
-                                   |
-                                   ↓
-                          SSRF protection
-                                   |
-                                   ↓
-                         Fetch article
-                                   |
-              +--------------------+----------------+
-              |                                     |
-          Success                              Failure
-              |                                     |
-              ↓                                     ↓
-       Extract content                    Graceful error
-              |
-              ↓
-       Quality check (>=1000 chars)
-              |
-       +------+------+
-       |             |
-    Good text    Bad extraction
-       |             |
-       ↓             ↓
-      LLM       Jina / BS4 fallback
+        +------------+------------+------------------+
+        |                         |                  |
+    Text Claim                Article URL        Image Upload / YouTube
+        |                         |                  |
+        ↓                         ↓                  ↓
+  ContextLens              SSRF Security Guard   VisualLens
+ (Direct Analysis)                |             (OCR / Vision Model)
+                                  ↓
+                        Hybrid Extractor
+                        (Jina -> BS4 Fallback)
 ```
 
 ---
 
-## 4. Complete URL Fact-Checking Pipeline
+### 3.2 ContextLens Pipeline (Text & URLs)
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor User
-    participant FE as Frontend (ContextLens)
+    participant FE as ContextLens.jsx
     participant API as FastAPI (/api/v1/analyze)
     participant Orch as Orchestrator
     participant SSRF as SSRF Guard
-    participant Ext as ContentExtractor (Jina/BS4)
+    participant Ext as ContentExtractor
     participant Search as Tiered Search Stack
-    participant LLM as ReAct Agent
+    participant LLM as 4-Tier LLM Router
+    participant UI as ResultHero + SourceCard
 
-    User->>FE: Submits Article URL
-    FE->>API: POST /api/v1/analyze {input_text: url, input_type: "url"}
+    User->>FE: Submits Text Claim or News URL
+    FE->>API: POST /api/v1/analyze {input_text: input, input_type: "auto"}
     API->>API: Validate Pydantic Schema (maxLength=5000)
-    API->>Orch: orchestrator.process(url)
-    Orch->>SSRF: is_ssrf_safe_url(url)
-    SSRF->>SSRF: DNS Resolution (socket.getaddrinfo) & IP Bounds Check
-    alt SSRF Threat / Private IP
-        SSRF-->>Orch: Blocked (Private/Loopback IP)
-        Orch-->>FE: HTTP 400 / Security Warning (status: BLOCKED)
-    else SSRF Safe
-        SSRF-->>Orch: Safe
-        Orch->>Ext: extract_from_url(url)
-        Ext->>Ext: Jina Reader Primary (r.jina.ai)
-        alt Jina Success (>=1,000 chars)
-            Ext-->>Orch: Clean Markdown Text (status: SUCCESS)
-        else Jina Failed / Paywalled / Timeout
-            Ext->>Ext: Fallback to httpx + BeautifulSoup (5MB Cap)
-            Ext-->>Orch: Extracted Text / Structured Failure Status
+    API->>Orch: orchestrator.process(input)
+    alt URL Input
+        Orch->>SSRF: is_ssrf_safe_url(url)
+        SSRF->>SSRF: socket.getaddrinfo IPv4/v6 DNS Check
+        alt Unsafe IP
+            SSRF-->>Orch: Blocked (Private/Loopback IP)
+            Orch-->>FE: Return status: BLOCKED
+        else Safe IP
+            SSRF-->>Orch: Safe
+            Orch->>Ext: extract_from_url(url)
+            Ext-->>Orch: Clean Text (Jina or BS4 fallback)
         end
-        Orch->>Ext: 3-Way Evidence Compression (First 3k + Middle 4k + Last 3k)
-        Orch->>Search: tiered_search(query)
-        Search-->>Orch: Verified Web Citations
-        Orch->>LLM: run_investigation(query, evidence) + Prompt Injection Guard
-        LLM-->>Orch: Autonomous Fact-Check Synthesis
-        Orch->>FE: Return Structured JSON Result + system_metadata
-        FE->>User: Render ResultHero + SourceCard
     end
+    Orch->>Search: tiered_search(query)
+    Search-->>Orch: Web Citations
+    Orch->>LLM: run_investigation(query, evidence)
+    LLM-->>Orch: Synthesis (Nemotron 120B / Groq 70B / DeepInfra 27B / Local LexRank)
+    Orch->>FE: Payload + system_metadata
+    FE->>User: Render ResultHero + SourceCard
 ```
 
 ---
 
-## 5. Extraction Result State Machine
+### 3.3 VisualLens Pipeline (Images & Forensics)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant FE as VisualLens.jsx
+    participant API as FastAPI (/api/v1/analyze/image)
+    participant Orch as Orchestrator
+    participant Vis as Vision Service (vision_service.py)
+    participant Img as Image Service (image_service.py)
+    participant LLM as 4-Tier LLM Router
+
+    User->>FE: Uploads Image File (Base64)
+    FE->>API: POST /api/v1/analyze/image {image_base64: b64, user_query: q}
+    API->>Orch: orchestrator.process_image(b64)
+    Orch->>Img: extract_image_evidence(img_bytes)
+    Img->>Img: OCR Text Extraction (pytesseract) + EXIF Metadata
+    Img-->>Orch: {ocr_text, metadata_context}
+    Orch->>Vis: analyze_image(b64)
+    Vis->>Vis: Call HF Inference API (ViT/SigLIP2 Model)
+    Vis-->>Orch: {label: "AI-GENERATED/DEEPFAKE", confidence: 0.94}
+    Orch->>LLM: run_investigation(ocr_text, image_metadata)
+    LLM-->>Orch: Visual Forensic Explanation
+    Orch->>FE: 5-Card Forensics Payload
+    FE->>User: Render Deepfake Badge, EXIF Details & OCR Evidence
+```
+
+---
+
+### 3.4 YouTube Pipeline (Dual-Stream Transcripts)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant FE as VisualLens.jsx / ContextLens.jsx
+    participant API as FastAPI (/api/v1/analyze)
+    participant Orch as Orchestrator
+    participant YT as YouTube Service (youtube_service.py)
+    participant LLM as 4-Tier LLM Router
+
+    User->>FE: Submits YouTube URL
+    FE->>API: POST /api/v1/analyze {input_text: yt_url, input_type: "youtube"}
+    API->>Orch: orchestrator.process(yt_url)
+    Orch->>YT: analyze_youtube(yt_url)
+    YT->>YT: Stream 1: YouTube Data API (Metadata)
+    YT->>YT: Stream 2: youtube_transcript_api / Scraper (Captions)
+    YT-->>Orch: {title, channel, transcript, api_stream, scraper_stream}
+    Orch->>LLM: run_investigation(transcript[:2000], evidence)
+    LLM-->>Orch: Synthesis of Video Claims
+    Orch->>FE: Return Structured JSON Result
+    FE->>User: Render ResultHero + Video Transcript Highlights
+```
+
+---
+
+## 4. Extraction Result State Machine
 
 Instead of crashing or returning opaque `500` errors, CAWNCADE classifies extraction outcomes into structured state codes:
 
@@ -198,7 +237,7 @@ Instead of crashing or returning opaque `500` errors, CAWNCADE classifies extrac
 
 ---
 
-## 6. Backend Architecture
+## 5. Backend Architecture
 
 ### Directory Structure
 ```
@@ -239,7 +278,7 @@ backend/app/
 
 ---
 
-## 7. Frontend Architecture
+## 6. Frontend Architecture
 
 ### Component Hierarchy
 ```
@@ -270,7 +309,7 @@ frontend/src/
 
 ---
 
-## 8. LLM Provider Architecture
+## 7. LLM Provider Architecture
 
 CAWNCADE AI implements a 4-tier fault-tolerant LLM router cascade:
 
@@ -289,7 +328,7 @@ flowchart LR
 - **Primary (Tier 1)**: OpenRouter `nvidia/nemotron-3-super-120b-a12b:free` for high-parameter multi-step ReAct reasoning.
 - **Fallback 1 (Tier 2)**: Hugging Face Router Meta Llama 3.3 70B Instruct via Groq LPU engine.
 - **Fallback 2 (Tier 3)**: Hugging Face Router Google Gemma 3 27B via DeepInfra engine.
-- **Fallback 3 (Tier 4)**: Local CPU Extractive NLP (`sumy` LexRank + TF-IDF) when all online LLM endpoints are unreachable.
+- **Fallback 3 (Tier 4)**: Local CPU Extractive NLP (`sumy` LexRank + `extract_local_entities`) when all online LLM endpoints are unreachable.
 
 ### Telemetry Metadata Payload (`system_metadata`)
 Every response payload includes diagnostic telemetry tracking execution details:
@@ -307,7 +346,7 @@ Every response payload includes diagnostic telemetry tracking execution details:
 
 ---
 
-## 9. Extraction Architecture
+## 8. Extraction Architecture
 
 ### Hybrid Extraction Decision Tree
 
@@ -332,7 +371,7 @@ flowchart TD
 
 ---
 
-## 10. Security Architecture
+## 9. Security Architecture
 
 ### Security Matrix
 
@@ -349,7 +388,7 @@ flowchart TD
 
 ---
 
-## 11. Rate Limiting & Resilience Architecture
+## 10. Rate Limiting & Resilience Architecture
 
 ### Timeout & Circuit Breaker Matrix
 
@@ -362,28 +401,25 @@ CAWNCADE uses a custom `CircuitBreaker` class (`app/core/resilience.py`) with `C
 | **HTTP Fallback Fetch**| `httpx.AsyncClient` | 15.0s | N/A | Fallback to URL slug keyword search. |
 | **Google Safe Browsing**| `httpx.AsyncClient` | 10.0s | `circuit_safe_browsing` | Returns `safe: True` with warning log. |
 | **Tiered Web Search** | `news_service.py` | 15.0s | `circuit_google_search`, `circuit_tavily` | Cascades through 7 search tiers. |
-| **ReAct LLM Investigation**| `CawncadeAgent` | 30.0s | `circuit_agent` | Fallback to LexRank Extractive NLP (Sumy). |
+| **ReAct LLM Investigation**| `CawncadeAgent` | 30.0s | `circuit_agent` | Fallback to LexRank Extractive NLP (`sumy`). |
 
 ---
 
-## 12. Testing Documentation
+## 11. Verification Matrix
 
-### Test Case Suite
-
-| Category | Test Case Name | Input / Vector | Expected Behavior | Implementation Location |
-| :--- | :--- | :--- | :--- | :--- |
-| **Security** | SSRF Localhost Block | `http://localhost:8000/admin` | Rejected with `Security Block: Access to local network prohibited`. | `safe_browsing_service.py` |
-| **Security** | AWS Metadata Block | `http://169.254.169.254/meta-data` | Rejected with `Security Block: Restricted private IP address`. | `safe_browsing_service.py` |
-| **Security** | Oversized Payload | String > 5,000 chars | Rejected by FastAPI with HTTP 422 Unprocessable Entity. | `analysis.py` |
-| **Security** | 5MB Response Cap | URL returning >5MB stream | Stream aborted; returns `URL response body exceeded 5MB limit`. | `extractor.py` |
-| **Extraction** | JS-Heavy News Site | Complex React news page | Jina Reader extracts clean markdown text (>1,000 chars). | `extractor.py` |
-| **Extraction** | Paywalled Article | Protected news site | Status set to `PAYWALL`; falls back to URL slug keyword extraction. | `extractor.py` |
-| **LLM** | Prompt Injection Attack | Text containing `"Ignore instructions"`| Prompt guardrail neutralizes attack; treats text strictly as raw data. | `agent_service.py` |
-| **Frontend** | 320px Mobile Text Wrap | Long finding status string | Text wraps to 2 clean lines; zero `...` string cuts or overflow. | `SourceCard.jsx` |
+| Component / Feature | Code Location | Verified Test Suite | Expected Production Output |
+| :--- | :--- | :--- | :--- |
+| **SSRF Post-DNS Guard** | [safe_browsing_service.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/services/safe_browsing_service.py#L20-L50) | Input `http://localhost:8000/admin` | Returns `(False, "Security Block: Access to local network prohibited.")` |
+| **Jina Primary Extractor** | [extractor.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/modules/extraction/extractor.py#L34-L65) | URL submit via ContextLens | `method: "jina_reader"`, text >= 1000 chars, status: `SUCCESS` |
+| **5MB Response Byte Cap** | [extractor.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/modules/extraction/extractor.py#L70-L85) | Stream byte count check | Aborts download if > 5MB; returns size cap warning. |
+| **FAISS Vector Cache** | [cache_service.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/services/cache_service.py#L60-L90) | Submit identical claim | `< 50ms` Instant Cache Hit with `confidence_label: "CACHED"` |
+| **Tier 4 Offline No-LLM** | [orchestrator.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/core/orchestrator.py#L35-L53) | [test_tier4_fallback.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/tests/test_tier4_fallback.py) | `model_used: "local_lexrank_nlp"`, extracted key sentences + detected entities |
+| **Deepfake Detection** | [vision_service.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/services/vision_service.py#L16-L65) | Image upload via VisualLens | `normalized: "AI-GENERATED/DEEPFAKE"` with score confidence % |
+| **YouTube Transcript** | [youtube_service.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/services/youtube_service.py#L15-L60) | YouTube URL submit | Dual-stream API + Scraper transcript text extraction |
 
 ---
 
-## 13. User Use Cases
+## 12. User Use Cases
 
 ### Use Case 1: Checking a Text Claim
 - **Actor**: Public User / Journalist
@@ -405,7 +441,7 @@ CAWNCADE uses a custom `CircuitBreaker` class (`app/core/resilience.py`) with `C
 
 ---
 
-## 14. Deployment Architecture
+## 13. Deployment Architecture
 
 ### Environments
 - **Development**:
@@ -419,7 +455,7 @@ CAWNCADE uses a custom `CircuitBreaker` class (`app/core/resilience.py`) with `C
 
 ---
 
-## 15. Performance & Latency Budget
+## 14. Performance & Latency Budget
 
 - **Instant Path (Cache Hit)**: `< 50ms` via FAISS CPU vector lookup (`app/services/cache_service.py`).
 - **Fast Path (Cached Search + Direct LLM)**: `5 - 10 seconds`.
@@ -429,7 +465,7 @@ CAWNCADE uses a custom `CircuitBreaker` class (`app/core/resilience.py`) with `C
 
 ---
 
-## 16. Architecture Update Policy
+## 15. Architecture Update Policy
 
 > ### ⚠️ ARCHITECTURE UPDATE POLICY
 > **This document (`docs/ARCHITECTURE.md`) is a living specification.**  
