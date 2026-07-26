@@ -21,7 +21,7 @@ export default function ContextSynthesis({ summary, isLoading }) {
 
   if (!summary) return null;
 
-  // DOMParser-based HTML sanitization: extracts text nodes cleanly and eliminates broken tags
+  // DOMParser-based HTML sanitization: extracts text nodes cleanly and eliminates broken HTML tags
   const sanitizeHtmlText = (raw) => {
     if (!raw) return '';
     try {
@@ -34,7 +34,7 @@ export default function ContextSynthesis({ summary, isLoading }) {
 
   let cleanText = sanitizeHtmlText(summary);
 
-  // Strip internal developer jargon & repetitive headers
+  // Clean internal developer jargon & repetitive system prefixes
   cleanText = cleanText
     .replace(/^VERDICT:\s*[^\n]+\n*/gi, '')
     .replace(/PRELIMINARY ASSESSMENT\s*/gi, '')
@@ -42,10 +42,7 @@ export default function ContextSynthesis({ summary, isLoading }) {
     .replace(/Initial data snippet:\s*/gi, '')
     .trim();
 
-  // If text became empty or too technical, provide clear human summary fallback
-  if (!cleanText || cleanText.length < 20) {
-    cleanText = "We searched available news sources and official references. No reliable evidence currently supports this claim. Advanced verification is temporarily unavailable, so this result is based on live web retrieval.";
-  }
+  if (!cleanText) return null;
 
   // Convert URLs or Markdown links into clean UI badges
   const renderFormattedText = (text) => {
@@ -76,7 +73,7 @@ export default function ContextSynthesis({ summary, isLoading }) {
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 px-2.5 py-0.5 mx-1 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/25 rounded-md text-xs font-medium transition-colors no-underline align-middle"
                 >
-                  <span>🔗 {domain}</span>
+                  <span>{domain}</span>
                   <ExternalLink className="w-3 h-3 opacity-70" />
                 </a>
               );
@@ -100,7 +97,7 @@ export default function ContextSynthesis({ summary, isLoading }) {
     <div className="glass-card p-6 md:p-8 h-full flex flex-col gap-4">
       <div className="flex items-center gap-3 pb-3 border-b border-white/5">
         <FileText className="w-5 h-5 text-primary" />
-        <h2 className="text-lg font-bold text-white">Summary</h2>
+        <h2 className="text-lg font-bold text-white">Analysis Summary</h2>
       </div>
 
       <div className="prose prose-invert max-w-none text-text leading-relaxed w-full overflow-hidden">
