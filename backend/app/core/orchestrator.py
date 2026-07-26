@@ -294,6 +294,14 @@ class Orchestrator:
 
         compute_time = int((time.time() - start_time) * 1000)
 
+        # ── Telemetry Metadata Collection ──
+        system_meta = {
+            "model_used": getattr(cawncade_agent, "active_model", "local_lexrank_nlp"),
+            "llm_tier": getattr(cawncade_agent, "llm_tier", "tier_4_local_nlp"),
+            "fallback_used": getattr(cawncade_agent, "fallback_used", False),
+            "latency_ms": compute_time,
+        }
+
         result = {
             "answer": synthesis.get("layer1_claim", ""),
             "context_summary": synthesis.get("layer2_verification", ""),
@@ -309,6 +317,7 @@ class Orchestrator:
             ],
             "confidence": scores.get("confidence", 0.0), "scores": scores,
             "compute_time_ms": compute_time, "status": "completed",
+            "system_metadata": system_meta,
             "metadata": {"input_type": input_type, "extraction": extraction_meta,
                 "fact_check": fact_check_result, "fact_verdict": fact_verdict,
                 "tier_stats": search_result.get("tier_stats", {}), "sources_retrieved": len(sources),

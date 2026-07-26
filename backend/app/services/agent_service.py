@@ -145,24 +145,19 @@ def you_search(query: str) -> str:
             "title": r.get("title", ""),
             "snippet": r.get("snippet", ""),
             "url": r.get("url", "")
-        } for r in data]) if data else "No results found from You.com search."
-    except Exception as e:
-        return f"You.com search failed: {e}"
-
-
-# ═══════════════════════════════════════════════════════════════
-# CAWNCADE AGENT — ReAct Engine
-# ═══════════════════════════════════════════════════════════════
-class CawncadeAgent:
+        } for r in data]) if data else class CawncadeAgent:
     """
-    ReAct agent powered by Llama 3.1 8B via Hugging Face Router.
-    Maintains a triple-tool research stack assembled at init time.
+    ReAct agent powered by Llama 3.1 / Nemotron via OpenRouter & Hugging Face Router.
+    Maintains a multi-provider fallback cascade with telemetry tracking.
     """
 
     def __init__(self):
         self._agent_executor: AgentExecutor | None = None
         self._initialized: bool = False
         self.tools: list = []
+        self.active_model: str = "local_lexrank_nlp"
+        self.llm_tier: str = "tier_4_local_nlp"
+        self.fallback_used: bool = False
 
     # ── Tool Assembly ──────────────────────────────────────────
     def _build_tools(self) -> list:
@@ -171,9 +166,6 @@ class CawncadeAgent:
         Always includes: DDG News + Jina Reader.
         Conditionally includes: Tavily (only if TAVILY_API_KEY is set).
         """
-        # ── Tool 1: DuckDuckGo News Search ─────────────────────
-        # source="news" is the PRIMARY noise-blocking mechanism.
-        # Prevents jewelry, shopping, dog-video hallucinations.
         wrapper = DuckDuckGoSearchAPIWrapper(
             region="wt-wt",
             time="m",          # Last 30 days — relevant 2026 news only
@@ -189,17 +181,11 @@ class CawncadeAgent:
         )
         built_tools = [ddg_tool, process_url, serper_search, you_search]
 
-        # ── Tool 3: Tavily AI Search (Conditional Backup) ──────
-        # Preserves your 'backup' intent — only active when key is present.
-        # Gives Llama 3.1 the autonomous choice: "DDG failed, use Tavily."
         tavily_key = settings.TAVILY_API_KEY or os.getenv("TAVILY_API_KEY", "")
         if tavily_key:
             try:
                 from langchain_community.tools.tavily_search import TavilySearchResults
-
-                # LangChain's Tavily wrapper reads the key from os.environ
                 os.environ["TAVILY_API_KEY"] = tavily_key
-
                 tavily_tool = TavilySearchResults(
                     max_results=3,
                     name="tavily_news_search",
@@ -211,11 +197,6 @@ class CawncadeAgent:
                 )
                 built_tools.append(tavily_tool)
                 log.info("[Agent] ✅ Tavily news search tool armed (backup, quota-preserving).")
-            except ImportError:
-                log.warning(
-                    "[Agent] ⚠️ TavilySearchResults not importable from langchain_community. "
-                    "Ensure langchain-community>=0.0.10 is installed."
-                )
             except Exception as e:
                 log.warning(f"[Agent] ⚠️ Tavily tool failed to initialize: {e}")
         else:
@@ -226,8 +207,8 @@ class CawncadeAgent:
     # ── Lazy Initialization ────────────────────────────────────
     def _init_agent(self):
         """
-        Initializes Llama 3.1 via HF Router on first call (lazy init).
-        Idempotent — safe to call multiple times.
+        Initializes multi-provider LLM router on first call.
+        Cascade: Tier 1 OpenRouter Nemotron -> Tier 2 HF Groq Llama 70B -> Tier 3 HF DeepInfra Gemma 27B -> Tier 4 Local NLP.
         """
         if self._initialized:
             return
@@ -254,8 +235,11 @@ class CawncadeAgent:
                 )
                 primary_llm.invoke("ping")
                 self.llm = primary_llm
+                self.active_model = "nvidia/nemotron-3-super-120b-a12b:free"
+                self.llm_tier = "tier_1_openrouter"
+                self.fallback_used = False
             except Exception as e1:
-                log.warning(f"[Agent] ⚠️ Tier 1 OpenRouter connection dropped/unavailable: {e1}. Cascading to Tier 2 HF Router (Groq Llama 3.3 70B)...")
+                log.warning(f"[Agent] ⚠️ Tier 1 OpenRouter dropped: {e1}. Cascading to Tier 2 HF Router (Groq Llama 3.3 70B)...")
                 
                 # ── Tier 2: Hugging Face Router API + Groq LPU Engine ──
                 hf_token = getattr(settings, "HUGGINGFACEHUB_API_TOKEN", None) or getattr(settings, "HUGGINGFACE_API_TOKEN", None) or os.getenv("HUGGINGFACEHUB_API_TOKEN")
@@ -279,9 +263,12 @@ class CawncadeAgent:
                         
                     try:
                         self.llm = _init_hf_groq()
+                        self.active_model = "meta-llama/Llama-3.3-70B-Instruct:groq"
+                        self.llm_tier = "tier_2_groq"
+                        self.fallback_used = True
                         log.info("[Agent] ✅ Tier 2 (Groq) armed successfully.")
                     except Exception as e2:
-                        log.warning(f"[Agent] ⚠️ Tier 2 Groq allocation saturated: {e2}. Routing to DeepInfra fallback...")
+                        log.warning(f"[Agent] ⚠️ Tier 2 Groq saturated: {e2}. Cascading to Tier 3 HF Router (DeepInfra Gemma 27B)...")
                         
                         # ── Tier 3: Hugging Face Router API + DeepInfra Engine ──
                         @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), reraise=True)
@@ -299,13 +286,22 @@ class CawncadeAgent:
                             
                         try:
                             self.llm = _init_hf_deepinfra()
+                            self.active_model = "google/gemma-3-27b-it:deepinfra"
+                            self.llm_tier = "tier_3_deepinfra"
+                            self.fallback_used = True
                             log.info("[Agent] ✅ Tier 3 (DeepInfra) armed successfully.")
                         except Exception as e3:
-                            log.warning(f"[Agent] 🔴 Tier 3 pipeline rejected request: {e3}. Dropping to Offline Mode.")
+                            log.warning(f"[Agent] 🔴 Tier 3 pipeline rejected request: {e3}. Dropping to Tier 4 Offline No-LLM Mode.")
                             self.llm = None
+                            self.active_model = "local_lexrank_nlp"
+                            self.llm_tier = "tier_4_local_nlp"
+                            self.fallback_used = True
                 else:
-                    log.warning(f"[Agent] 🔴 Critical Failure: No HF token provided. Agent will run in NO-LLM mode.")
+                    log.warning(f"[Agent] 🔴 Critical Failure: No HF token provided. Dropping to Tier 4 Offline No-LLM Mode.")
                     self.llm = None
+                    self.active_model = "local_lexrank_nlp"
+                    self.llm_tier = "tier_4_local_nlp"
+                    self.fallback_used = True
 
             # ── Tool Stack ─────────────────────────────────────
             self.tools = self._build_tools()
