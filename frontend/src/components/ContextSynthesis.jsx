@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, ExternalLink, CheckCircle2, XCircle, AlertTriangle, HelpCircle, Info } from 'lucide-react';
+import { FileText, ExternalLink, CheckCircle2, XCircle, AlertTriangle, Info } from 'lucide-react';
 
 export default function ContextSynthesis({ summary, isLoading }) {
   if (isLoading) {
@@ -21,8 +21,18 @@ export default function ContextSynthesis({ summary, isLoading }) {
 
   if (!summary) return null;
 
-  // Clean raw HTML tags (e.g. <ol>, <li>, <a href...>) that might leak in from news feeds
-  let cleanText = summary.replace(/<[^>]*>/g, '');
+  // DOMParser-based HTML sanitization: extracts text nodes cleanly and eliminates broken tags
+  const sanitizeHtmlText = (raw) => {
+    if (!raw) return '';
+    try {
+      const doc = new DOMParser().parseFromString(raw, 'text/html');
+      return doc.body.textContent || doc.body.innerText || raw.replace(/<[^>]*>?/gm, '');
+    } catch (e) {
+      return raw.replace(/<[^>]*>?/gm, '');
+    }
+  };
+
+  let cleanText = sanitizeHtmlText(summary);
 
   // Extract explicit VERDICT if present at the top
   let verdictType = null;
@@ -86,13 +96,11 @@ export default function ContextSynthesis({ summary, isLoading }) {
     );
   };
 
-  // Convert raw URLs or Markdown links into clean UI badges
+  // Convert URLs or Markdown links into clean UI badges
   const renderFormattedText = (text) => {
     if (!text) return null;
 
-    // Pattern for URLs: https://...
     const urlRegex = /(https?:\/\/[^\s<]+)/g;
-
     const paragraphs = text.split('\n\n').filter(Boolean);
 
     return paragraphs.map((para, pIdx) => {

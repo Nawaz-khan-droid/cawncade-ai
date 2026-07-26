@@ -42,7 +42,8 @@ When the `evidence_context` block contains an explicit `[METADATA ANALYSIS]` or 
 4. **OCR Grounding**: Read the text extracted via `[OCR TEXT]` and check if the spelling, formatting, or wording matches known parody accounts or satirical news templates found via your web tools.
 
 ## ⚠️ STRICT FORMATTING RULES
-You MUST use exactly this format for your internal reasoning. DO NOT USE MARKDOWN BOLDING (`**`) FOR THE HEADERS.
+1. NEVER output raw HTML tags (such as `<a href="...">`, `<ol>`, `<li>`, etc.). Output ONLY clean Markdown formatting.
+2. You MUST use exactly this format for your internal reasoning. DO NOT USE MARKDOWN BOLDING (`**`) FOR THE HEADERS.
 
 Thought: I need to verify this claim. I will search the web.
 Action: duckduckgo_search
