@@ -60,7 +60,7 @@ class ContentExtractor:
                 max_article_chars = getattr(settings, "MAX_ARTICLE_CHARS", 10000)
                 if len(cleaned_text) > max_article_chars:
                     first_part = cleaned_text[:3000]
-                    mid_start = (len(cleaned_text) // 2) - 2000
+                    mid_start = max(0, (len(cleaned_text) // 2) - 2000)
                     middle_part = cleaned_text[mid_start:mid_start + 4000]
                     last_part = cleaned_text[-3000:]
                     result["text"] = (
