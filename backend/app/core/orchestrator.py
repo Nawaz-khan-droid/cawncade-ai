@@ -312,18 +312,18 @@ class Orchestrator:
                 synthesis["layer3_deep_dive"] = agent_report
                 log.info(f"[Orchestrator] Agent deep-dive: {len(agent_report)} chars")
                 
-                # -----------------------------------------------------------------
-                # CACHE LOGGING: Save the newly researched claim to FAISS
-                # -----------------------------------------------------------------
+                # Save researched claim to FAISS semantic cache
                 from app.services.cache_service import semantic_cache
                 semantic_cache.update_cache(query, agent_report)
             else:
-                log.info("[Orchestrator] LLM deep-dive returned empty. Engaging local Extractive NLP (Sumy).")
-                agent_report = generate_local_nlp_summary(evidence_context, num_sentences=3)
+                log.info("[Orchestrator] LLM deep-dive returned empty. Engaging offline_nlp_service.")
+                from app.services.offline_nlp_service import offline_nlp_service
+                agent_report = offline_nlp_service.generate_report(evidence_context, sources_count=len(sources))
                 synthesis["layer3_deep_dive"] = agent_report
         except Exception as e:
-            log.warning(f"[Orchestrator] Agent deep-dive failed: {e}. Engaging local NLP fallback.")
-            agent_report = generate_local_nlp_summary(evidence_context, num_sentences=3)
+            log.warning(f"[Orchestrator] Agent deep-dive failed: {e}. Engaging offline_nlp_service fallback.")
+            from app.services.offline_nlp_service import offline_nlp_service
+            agent_report = offline_nlp_service.generate_report(evidence_context, sources_count=len(sources))
             synthesis["layer3_deep_dive"] = agent_report
 
         compute_time = int((time.time() - start_time) * 1000)

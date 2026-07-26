@@ -1,7 +1,7 @@
 # CAWNCADE AI — Living Project Architecture Documentation
 
 **Context Aware Watch News Confirmation Authenticity Detection Engine (v3.5)**  
-*Single Source of Truth for Application Architecture, Verification Pipelines, Security Model, LLM Routing, and Testing Strategy.*
+*Single Source of Truth for Application Architecture, Verification Pipelines, Security Model, LLM Routing, Failure Flowcharts, and Testing Strategy.*
 
 ---
 
@@ -13,18 +13,19 @@
    - [3.2 ContextLens Pipeline (Text & URLs)](#32-contextlens-pipeline-text--urls)
    - [3.3 VisualLens Pipeline (Images & Forensics)](#33-visuallens-pipeline-images--forensics)
    - [3.4 YouTube Pipeline (Dual-Stream Transcripts)](#34-youtube-pipeline-dual-stream-transcripts)
-4. [Extraction Result State Machine](#4-extraction-result-state-machine)
-5. [Backend Architecture](#5-backend-architecture)
-6. [Frontend Architecture](#6-frontend-architecture)
-7. [LLM Provider Architecture](#7-llm-provider-architecture)
-8. [Extraction Architecture](#8-extraction-architecture)
-9. [Security Architecture](#9-security-architecture)
-10. [Rate Limiting & Resilience Architecture](#10-rate-limiting--resilience-architecture)
-11. [Verification Matrix](#11-verification-matrix)
-12. [User Use Cases](#12-user-use-cases)
-13. [Deployment Architecture](#13-deployment-architecture)
-14. [Performance & Latency Budget](#14-performance--latency-budget)
-15. [Architecture Update Policy](#15-architecture-update-policy)
+4. [Failure-State & Resiliency Flowcharts](#4-failure-state--resiliency-flowcharts)
+5. [Extraction Result State Machine](#5-extraction-result-state-machine)
+6. [Backend Architecture](#6-backend-architecture)
+7. [Frontend Architecture](#7-frontend-architecture)
+8. [LLM Provider Architecture & Tier 4 Grounded Mode](#8-llm-provider-architecture--tier-4-grounded-mode)
+9. [Extraction Architecture](#9-extraction-architecture)
+10. [Security Architecture](#10-security-architecture)
+11. [Rate Limiting & Resilience Architecture](#11-rate-limiting--resilience-architecture)
+12. [Verification Matrix](#12-verification-matrix)
+13. [User Use Cases](#13-user-use-cases)
+14. [Deployment Architecture](#14-deployment-architecture)
+15. [Performance & Latency Budget](#15-performance--latency-budget)
+16. [Architecture Update Policy](#16-architecture-update-policy)
 
 ---
 
@@ -46,7 +47,7 @@ CAWNCADE AI is a multi-tiered, fault-tolerant news verification platform and cla
   1. Tier 1: OpenRouter (`nvidia/nemotron-3-super-120b-a12b:free`)
   2. Tier 2: HuggingFace Router Groq (`meta-llama/Llama-3.3-70B-Instruct:groq`)
   3. Tier 3: HuggingFace Router DeepInfra (`google/gemma-3-27b-it:deepinfra`)
-  4. Tier 4: Offline No-LLM Mode (Local Extractive LexRank NLP + Entity Extraction via `sumy` & `extract_local_entities`)
+  4. Tier 4: Offline Deterministic Grounded Mode (`app/services/offline_nlp_service.py` LexRank + Entity Extractor)
 - **Semantic Vector Cache**: FAISS (`faiss-cpu`) + `sentence-transformers/all-MiniLM-L6-v2` (`app/services/cache_service.py`).
 - **Resilience**: Custom state-machine CircuitBreaker (`app/core/resilience.py`), Tenacity exponential backoff retries.
 
@@ -222,7 +223,39 @@ sequenceDiagram
 
 ---
 
-## 4. Extraction Result State Machine
+## 4. Failure-State & Resiliency Flowcharts
+
+```
+               Input URL
+                  |
+                  |
+             SSRF Check (safe_browsing_service.py)
+                  |
+          -----------------
+          |               |
+        Safe            Blocked (Private/Loopback IP)
+          |               |
+          |          Security Block UI (status: BLOCKED)
+          |
+       Jina Reader (r.jina.ai)
+          |
+     ---------------
+     |             |
+ Success        Failure / Timeout (>15s)
+     |             |
+ Evidence      httpx + BeautifulSoup4 (5MB Cap)
+                |
+           -------------
+           |           |
+        Success     Paywall / Failed
+           |           |
+       Continue    Slug Keyword Extractor
+                    + Web Search Citations
+```
+
+---
+
+## 5. Extraction Result State Machine
 
 Instead of crashing or returning opaque `500` errors, CAWNCADE classifies extraction outcomes into structured state codes:
 
@@ -237,7 +270,7 @@ Instead of crashing or returning opaque `500` errors, CAWNCADE classifies extrac
 
 ---
 
-## 5. Backend Architecture
+## 6. Backend Architecture
 
 ### Directory Structure
 ```
@@ -268,6 +301,7 @@ backend/app/
 │   ├── dictionary_matcher.py# Tier 0 local viral claim cache
 │   ├── fact_check_service.py# Google Fact Check API integration
 │   ├── news_service.py      # 7-Tier web search engine (Serper, Tavily, DDG, RSS, GDELT)
+│   ├── offline_nlp_service.py # Tier 4 Deterministic Offline NLP & Entity Extraction Engine
 │   ├── safe_browsing_service.py # Google Safe Browsing & SSRF DNS guard
 │   ├── vision_service.py    # HF Inference ViT/SigLIP2 deepfake analysis
 │   └── youtube_service.py   # YouTube API & transcript scraper
@@ -278,7 +312,7 @@ backend/app/
 
 ---
 
-## 6. Frontend Architecture
+## 7. Frontend Architecture
 
 ### Component Hierarchy
 ```
@@ -309,7 +343,7 @@ frontend/src/
 
 ---
 
-## 7. LLM Provider Architecture
+## 8. LLM Provider Architecture & Tier 4 Grounded Mode
 
 CAWNCADE AI implements a 4-tier fault-tolerant LLM router cascade:
 
@@ -321,14 +355,23 @@ flowchart LR
     Tier2 -->|Success| GroqLlama[Llama 3.3 70B via Groq LPU]
     Tier2 -->|Fail / Timeout| Tier3{Tier 3: HF Router DeepInfra}
     Tier3 -->|Success| Gemma27B[Gemma 3 27B via DeepInfra]
-    Tier3 -->|Fail / Timeout| Tier4[Tier 4: Offline No-LLM Mode - LexRank NLP]
+    Tier3 -->|Fail / Timeout| Tier4[Tier 4: Offline Grounded Mode - LexRank + Entity Extractor]
 ```
 
 ### Provider Cascade Policy
 - **Primary (Tier 1)**: OpenRouter `nvidia/nemotron-3-super-120b-a12b:free` for high-parameter multi-step ReAct reasoning.
 - **Fallback 1 (Tier 2)**: Hugging Face Router Meta Llama 3.3 70B Instruct via Groq LPU engine.
 - **Fallback 2 (Tier 3)**: Hugging Face Router Google Gemma 3 27B via DeepInfra engine.
-- **Fallback 3 (Tier 4)**: Local CPU Extractive NLP (`sumy` LexRank + `extract_local_entities`) when all online LLM endpoints are unreachable.
+- **Fallback 3 (Tier 4)**: Local CPU Extractive NLP (`offline_nlp_service.py` LexRank + Entity Extractor for People, Orgs, Locations, Dates) when all online LLM endpoints are unreachable.
+
+### Tier 4 Capabilities vs. Limitations Matrix
+
+| Tier 4 Capabilities (Grounded Mode) | Tier 4 Limitations (No LLM) |
+| :--- | :--- |
+| ✅ Objective Extractive Summarization (LexRank) | ❌ No Generative AI Reasoning / Synthesis |
+| ✅ Entity Extraction (People, Orgs, Locations, Dates) | ❌ Cannot invent creative narrative explanations |
+| ✅ Multi-Source Citation Alignment & Count | ❌ Limited nuanced contradiction resolution |
+| ✅ Grounded Rule-Based Confidence Calculation | ❌ Cannot replace deep contextual LLM analysis |
 
 ### Telemetry Metadata Payload (`system_metadata`)
 Every response payload includes diagnostic telemetry tracking execution details:
@@ -346,7 +389,7 @@ Every response payload includes diagnostic telemetry tracking execution details:
 
 ---
 
-## 8. Extraction Architecture
+## 9. Extraction Architecture
 
 ### Hybrid Extraction Decision Tree
 
@@ -371,7 +414,7 @@ flowchart TD
 
 ---
 
-## 9. Security Architecture
+## 10. Security Architecture
 
 ### Security Matrix
 
@@ -388,7 +431,7 @@ flowchart TD
 
 ---
 
-## 10. Rate Limiting & Resilience Architecture
+## 11. Rate Limiting & Resilience Architecture
 
 ### Timeout & Circuit Breaker Matrix
 
@@ -401,11 +444,11 @@ CAWNCADE uses a custom `CircuitBreaker` class (`app/core/resilience.py`) with `C
 | **HTTP Fallback Fetch**| `httpx.AsyncClient` | 15.0s | N/A | Fallback to URL slug keyword search. |
 | **Google Safe Browsing**| `httpx.AsyncClient` | 10.0s | `circuit_safe_browsing` | Returns `safe: True` with warning log. |
 | **Tiered Web Search** | `news_service.py` | 15.0s | `circuit_google_search`, `circuit_tavily` | Cascades through 7 search tiers. |
-| **ReAct LLM Investigation**| `CawncadeAgent` | 30.0s | `circuit_agent` | Fallback to LexRank Extractive NLP (`sumy`). |
+| **ReAct LLM Investigation**| `CawncadeAgent` | 30.0s | `circuit_agent` | Fallback to LexRank Extractive NLP (`offline_nlp_service.py`). |
 
 ---
 
-## 11. Verification Matrix
+## 12. Verification Matrix
 
 | Component / Feature | Code Location | Verified Test Suite | Expected Production Output |
 | :--- | :--- | :--- | :--- |
@@ -413,13 +456,13 @@ CAWNCADE uses a custom `CircuitBreaker` class (`app/core/resilience.py`) with `C
 | **Jina Primary Extractor** | [extractor.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/modules/extraction/extractor.py#L34-L65) | URL submit via ContextLens | `method: "jina_reader"`, text >= 1000 chars, status: `SUCCESS` |
 | **5MB Response Byte Cap** | [extractor.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/modules/extraction/extractor.py#L70-L85) | Stream byte count check | Aborts download if > 5MB; returns size cap warning. |
 | **FAISS Vector Cache** | [cache_service.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/services/cache_service.py#L60-L90) | Submit identical claim | `< 50ms` Instant Cache Hit with `confidence_label: "CACHED"` |
-| **Tier 4 Offline No-LLM** | [orchestrator.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/core/orchestrator.py#L35-L53) | [test_tier4_fallback.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/tests/test_tier4_fallback.py) | `model_used: "local_lexrank_nlp"`, extracted key sentences + detected entities |
+| **Tier 4 Offline Grounded**| [offline_nlp_service.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/services/offline_nlp_service.py) | [test_tier4_fallback.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/tests/test_tier4_fallback.py) | `model_used: "local_lexrank_nlp"`, extracted key sentences + detected entities |
 | **Deepfake Detection** | [vision_service.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/services/vision_service.py#L16-L65) | Image upload via VisualLens | `normalized: "AI-GENERATED/DEEPFAKE"` with score confidence % |
 | **YouTube Transcript** | [youtube_service.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/services/youtube_service.py#L15-L60) | YouTube URL submit | Dual-stream API + Scraper transcript text extraction |
 
 ---
 
-## 12. User Use Cases
+## 13. User Use Cases
 
 ### Use Case 1: Checking a Text Claim
 - **Actor**: Public User / Journalist
@@ -441,7 +484,7 @@ CAWNCADE uses a custom `CircuitBreaker` class (`app/core/resilience.py`) with `C
 
 ---
 
-## 13. Deployment Architecture
+## 14. Deployment Architecture
 
 ### Environments
 - **Development**:
@@ -455,7 +498,7 @@ CAWNCADE uses a custom `CircuitBreaker` class (`app/core/resilience.py`) with `C
 
 ---
 
-## 14. Performance & Latency Budget
+## 15. Performance & Latency Budget
 
 - **Instant Path (Cache Hit)**: `< 50ms` via FAISS CPU vector lookup (`app/services/cache_service.py`).
 - **Fast Path (Cached Search + Direct LLM)**: `5 - 10 seconds`.
@@ -465,7 +508,7 @@ CAWNCADE uses a custom `CircuitBreaker` class (`app/core/resilience.py`) with `C
 
 ---
 
-## 15. Architecture Update Policy
+## 16. Architecture Update Policy
 
 > ### ⚠️ ARCHITECTURE UPDATE POLICY
 > **This document (`docs/ARCHITECTURE.md`) is a living specification.**  
