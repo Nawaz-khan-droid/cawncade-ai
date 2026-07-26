@@ -17,7 +17,7 @@
 5. [Extraction Result State Machine](#5-extraction-result-state-machine)
 6. [Backend Architecture](#6-backend-architecture)
 7. [Frontend Architecture](#7-frontend-architecture)
-8. [LLM Provider Architecture & Tier 4 Grounded Mode](#8-llm-provider-architecture--tier-4-grounded-mode)
+8. [LLM Provider Architecture & Tier 4 No-LLM Verification Engine](#8-llm-provider-architecture--tier-4-no-llm-verification-engine)
 9. [Extraction Architecture](#9-extraction-architecture)
 10. [Security Architecture](#10-security-architecture)
 11. [Rate Limiting & Resilience Architecture](#11-rate-limiting--resilience-architecture)
@@ -47,7 +47,7 @@ CAWNCADE AI is a multi-tiered, fault-tolerant news verification platform and cla
   1. Tier 1: OpenRouter (`nvidia/nemotron-3-super-120b-a12b:free`)
   2. Tier 2: HuggingFace Router Groq (`meta-llama/Llama-3.3-70B-Instruct:groq`)
   3. Tier 3: HuggingFace Router DeepInfra (`google/gemma-3-27b-it:deepinfra`)
-  4. Tier 4: Offline Deterministic Grounded Mode (`app/services/offline_nlp_service.py` with Sumy LexRank + spaCy/NLTK/Regex NER)
+  4. Tier 4: No-LLM Grounded Verification Engine (`app/services/offline_nlp_service.py` with LexRank, spaCy NER, BM25, and Date Conflict Scorer)
 - **Search Stack (Active Engines)**:
   - Serper.dev Google API (Tier 1)
   - Tavily AI Search + You.com Index API (Tier 2)
@@ -85,9 +85,10 @@ flowchart TD
             SearchTiers[Active Search Stack: Serper -> Tavily -> You.com -> NewsData -> RSS -> DDG]
         end
         
-        subgraph AI Agent Reasoning
+        subgraph AI Agent Reasoning & Fallback
             Agent[LangChain ReAct Agent]
             LLMRouter[4-Tier Router: Nemotron 120B -> Groq 70B -> DeepInfra 27B -> Local LexRank NLP]
+            Tier4Engine[offline_nlp_service.py: spaCy NER + BM25 + Date Conflict Scorer]
         end
         
         Scorer[CAWNCADE Multi-Factor Scorer]
@@ -103,6 +104,7 @@ flowchart TD
     Orchestrator --> SearchTiers
     Orchestrator --> Agent
     Agent --> LLMRouter
+    LLMRouter --> Tier4Engine
     Orchestrator --> Scorer
 ```
 
@@ -166,7 +168,7 @@ sequenceDiagram
     Orch->>Search: tiered_search(query)
     Search-->>Orch: Web Citations (Serper, Tavily, You.com, RSS)
     Orch->>LLM: run_investigation(query, evidence)
-    LLM-->>Orch: Synthesis (Nemotron 120B / Groq 70B / DeepInfra 27B / Local LexRank)
+    LLM-->>Orch: Synthesis (Nemotron 120B / Groq 70B / DeepInfra 27B / Local LexRank Engine)
     Orch->>FE: Payload + system_metadata
     FE->>User: Render ResultHero + SourceCard
 ```
@@ -308,7 +310,7 @@ backend/app/
 │   ├── dictionary_matcher.py# Tier 0 local viral claim cache
 │   ├── fact_check_service.py# Google Fact Check API integration
 │   ├── news_service.py      # Multi-tier web search engine (Serper, Tavily, You.com, NewsData, RSS, DDG)
-│   ├── offline_nlp_service.py # Tier 4 Deterministic Offline NLP & Entity Extraction Engine
+│   ├── offline_nlp_service.py # Tier 4 No-LLM Deterministic Verification Engine
 │   ├── safe_browsing_service.py # Google Safe Browsing & SSRF DNS guard
 │   ├── vision_service.py    # HF Inference ViT/SigLIP2 deepfake analysis
 │   └── youtube_service.py   # YouTube API & transcript scraper
@@ -350,7 +352,7 @@ frontend/src/
 
 ---
 
-## 8. LLM Provider Architecture & Tier 4 Grounded Mode
+## 8. LLM Provider Architecture & Tier 4 No-LLM Verification Engine
 
 CAWNCADE AI implements a 4-tier fault-tolerant LLM router cascade:
 
@@ -362,21 +364,22 @@ flowchart LR
     Tier2 -->|Success| GroqLlama[Llama 3.3 70B via Groq LPU]
     Tier2 -->|Fail / Timeout| Tier3{Tier 3: HF Router DeepInfra}
     Tier3 -->|Success| Gemma27B[Gemma 3 27B via DeepInfra]
-    Tier3 -->|Fail / Timeout| Tier4[Tier 4: Offline Grounded Mode - Sumy LexRank + NER Cascade]
+    Tier3 -->|Fail / Timeout| Tier4[Tier 4: No-LLM Verification Engine - LexRank + BM25 + spaCy NER]
 ```
 
 ### Provider Cascade Policy
 - **Primary (Tier 1)**: OpenRouter `nvidia/nemotron-3-super-120b-a12b:free` for high-parameter multi-step ReAct reasoning.
 - **Fallback 1 (Tier 2)**: Hugging Face Router Meta Llama 3.3 70B Instruct via Groq LPU engine.
 - **Fallback 2 (Tier 3)**: Hugging Face Router Google Gemma 3 27B via DeepInfra engine.
-- **Fallback 3 (Tier 4)**: Local CPU Extractive NLP (`offline_nlp_service.py` using `sumy` LexRank + `spaCy` -> `NLTK` -> `Regex` NER cascade for People, Orgs, Locations, Dates) when all online LLM endpoints are unreachable.
+- **Fallback 3 (Tier 4)**: Local CPU Deterministic Verification Engine (`offline_nlp_service.py` using `sumy` LexRank + `rank_bm25` + `spaCy` NER for People, Orgs, Locations, Dates) when all online LLM endpoints are unreachable.
 
 ### Verified Code Implementations
-- **Summarization**: `sumy` (`LexRankSummarizer`) extracts central sentences based on graph centrality.
-- **NER Cascade Engine**:
-  1. `spaCy` (`en_core_web_sm`) -> Extracts `PERSON`, `ORG`, `GPE`, `DATE` entities.
-  2. `NLTK` (`ne_chunk`) -> Extracts named entity trees.
-  3. `Regex` -> Corporate suffix matching (`Inc`, `Corporation`, `LLC`) & date parsing (`Jan 15, 2025`).
+- **Extractive Summarization**: `sumy` (`LexRankSummarizer`) extracts central sentences based on graph centrality.
+- **Lexical Sentence Ranking**: `rank_bm25` (`BM25Okapi`) ranks top evidence sentences matching input claim keywords.
+- **Deterministic Verdict Brain (`evaluate_grounded_verdict`)**:
+  - Compares claim entities against collected web evidence.
+  - Detects 4-digit year timeline matches or date conflicts.
+  - Outputs grounded verdicts (`SUPPORTED BY AVAILABLE EVIDENCE`, `CONTRADICTED BY AVAILABLE EVIDENCE`, `MIXED / PARTIALLY SUPPORTED EVIDENCE`, `INSUFFICIENT EVIDENCE FOR DETERMINISTIC VERDICT`).
 
 ---
 
@@ -447,7 +450,7 @@ CAWNCADE uses a custom `CircuitBreaker` class (`app/core/resilience.py`) with `C
 | **Jina Primary Extractor** | [extractor.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/modules/extraction/extractor.py#L34-L65) | URL submit via ContextLens | `method: "jina_reader"`, text >= 1000 chars, status: `SUCCESS` |
 | **5MB Response Byte Cap** | [extractor.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/modules/extraction/extractor.py#L70-L85) | Stream byte count check | Aborts download if > 5MB; returns size cap warning. |
 | **FAISS Vector Cache** | [cache_service.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/services/cache_service.py#L60-L90) | Submit identical claim | `< 50ms` Instant Cache Hit with `confidence_label: "CACHED"` |
-| **Tier 4 Offline Grounded**| [offline_nlp_service.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/services/offline_nlp_service.py) | [test_tier4_fallback.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/tests/test_tier4_fallback.py) | `model_used: "local_lexrank_nlp"`, extracted key sentences + detected entities via spaCy/NLTK |
+| **Tier 4 Deterministic Engine**| [offline_nlp_service.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/services/offline_nlp_service.py) | [test_tier4_fallback.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/tests/test_tier4_fallback.py) | `model_used: "local_lexrank_nlp"`, BM25 ranked evidence, spaCy entities, & deterministic verdict |
 | **Deepfake Detection** | [vision_service.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/services/vision_service.py#L16-L65) | Image upload via VisualLens | `normalized: "AI-GENERATED/DEEPFAKE"` with score confidence % |
 | **YouTube Transcript** | [youtube_service.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/services/youtube_service.py#L15-L60) | YouTube URL submit | Dual-stream API + Scraper transcript text extraction |
 

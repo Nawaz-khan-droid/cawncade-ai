@@ -9,7 +9,8 @@ import {
   ShieldCheck, 
   Check, 
   ChevronDown, 
-  ChevronUp 
+  ChevronUp,
+  Cpu
 } from 'lucide-react';
 
 export default function ResultHero({ result }) {
@@ -139,6 +140,16 @@ export default function ResultHero({ result }) {
             <Clock className="w-3.5 h-3.5 text-slate-400" />
             <span>Checked just now</span>
           </div>
+          {result.system_metadata?.model_used && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/10 border border-primary/20 text-primary-light">
+              <Cpu className="w-3.5 h-3.5" />
+              <span>
+                {result.system_metadata.fallback_used
+                  ? "Tier 4 CPU Grounded Mode (No-LLM)"
+                  : `${result.system_metadata.model_used.split("/").pop()} (${result.system_metadata.llm_tier})`}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* INLINE UNVERIFIED NOTE */}

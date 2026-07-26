@@ -318,12 +318,12 @@ class Orchestrator:
             else:
                 log.info("[Orchestrator] LLM deep-dive returned empty. Engaging offline_nlp_service.")
                 from app.services.offline_nlp_service import offline_nlp_service
-                agent_report = offline_nlp_service.generate_report(evidence_context, sources_count=len(sources))
+                agent_report = offline_nlp_service.generate_report(query, evidence_context, sources_count=len(sources))
                 synthesis["layer3_deep_dive"] = agent_report
         except Exception as e:
             log.warning(f"[Orchestrator] Agent deep-dive failed: {e}. Engaging offline_nlp_service fallback.")
             from app.services.offline_nlp_service import offline_nlp_service
-            agent_report = offline_nlp_service.generate_report(evidence_context, sources_count=len(sources))
+            agent_report = offline_nlp_service.generate_report(query, evidence_context, sources_count=len(sources))
             synthesis["layer3_deep_dive"] = agent_report
 
         compute_time = int((time.time() - start_time) * 1000)
