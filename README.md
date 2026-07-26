@@ -17,10 +17,12 @@ A multi-tiered, fault-tolerant news verification platform with AI-powered reason
 
 ## Architecture
 
+For full details on pipelines, security models, LLM routing, and extraction logic, see the [Living Architecture Documentation (docs/ARCHITECTURE.md)](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/docs/ARCHITECTURE.md).
+
 - **Backend**: FastAPI (Python 3.11) on port 7860
 - **Frontend**: React 18 + Vite + Tailwind CSS
-- **AI Agent**: Llama 3.1 8B Instruct (ReAct) via HuggingFace Inference API
-- **Search Engine**: 5-Tier fallback with circuit breaker pattern
+- **AI Agent**: Llama 3.3 70B Instruct (ReAct) via OpenRouter & HuggingFace Router
+- **Search Engine**: 5-Tier fallback with circuit breaker pattern & FAISS semantic cache
 
 ## Features
 
