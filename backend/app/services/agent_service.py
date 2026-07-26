@@ -145,7 +145,12 @@ def you_search(query: str) -> str:
             "title": r.get("title", ""),
             "snippet": r.get("snippet", ""),
             "url": r.get("url", "")
-        } for r in data]) if data else class CawncadeAgent:
+        } for r in data]) if data else "No You.com results found."
+    except Exception as e:
+        return f"You.com search failed: {e}"
+
+
+class CawncadeAgent:
     """
     ReAct agent powered by Llama 3.1 / Nemotron via OpenRouter & Hugging Face Router.
     Maintains a multi-provider fallback cascade with telemetry tracking.
@@ -352,16 +357,16 @@ Thought:{{agent_scratchpad}}"""
                 self._initialized = True
                 tool_names = [t.name for t in self.tools]
                 log.info(
-                    f"[Agent] ✅ Llama Engine armed. "
+                    f"[Agent] [SUCCESS] Llama Engine armed. "
                     f"Tools: {tool_names} | max_iter={settings.AGENT_MAX_ITERATIONS}"
                 )
             else:
                 self._agent_executor = None
                 self._initialized = True
-                log.warning("[Agent] ⚠️ Operating in NO-LLM fallback mode. Deep synthesis is disabled.")
+                log.warning("[Agent] [WARNING] Operating in NO-LLM fallback mode. Deep synthesis is disabled.")
 
         except Exception as e:
-            log.error(f"[Agent] ❌ Engine Initialization Failed: {e}")
+            log.error(f"[Agent] [ERROR] Engine Initialization Failed: {e}")
             self._initialized = False
 
     # ── Investigation Runner ───────────────────────────────────
@@ -457,35 +462,48 @@ class CawncadeChatAgent:
         history = self.memory[session_id]
         history.append(HumanMessage(content=user_input))
         
-        # We invoke via AgentExecutor directly
-        if getattr(self._core_agent, "_agent_executor", None):
-            loop = asyncio.get_running_loop()
-            
-            # Format the memory into a string context if prompt expects string, 
-            # or pass it natively if Using LangChain 0.2+ ChatPrompts. 
-            # Our prompt hwchase17/react natively takes `input` as string. 
-            # We append the history string to the input securely.
-            history_str = "\n".join([f"{type(m).__name__}: {m.content}" for m in history[-5:]])
-            
-            system_instruction = (
-                "SYSTEM: You are CAWNCADE, an AI research assistant. "
-                "If the user asks a conversational question (e.g. 'what can you do', 'which llm do you use'), "
-                "you MUST immediately answer directly using 'Final Answer: [your response]'. "
-                "If they ask you to research, use your tools. "
-                "Always prioritize a Direct Answer over Perfect Research. Do not over-think or loop endlessly."
-            )
-            
-            chat_input = f"{system_instruction}\n\nCHAT HISTORY:\n{history_str}\n\nUSER NEW MESSAGE: {user_input}"
-            
-            response = await loop.run_in_executor(
-                None,
-                lambda: self._core_agent._agent_executor.invoke({"input": chat_input}),
-            )
-            output = response.get("output", "")
-        else:
-            output = "Agent Engine initialization failed. Please check your OpenRouter or HuggingFace API tokens in the backend .env file. Without them, the agent cannot respond."
-            
+        # Handle Chat Execution with LLM or Fall Back to Evidence Assistant Mode
+        output = ""
+        try:
+            if getattr(self._core_agent, "_agent_executor", None):
+                loop = asyncio.get_running_loop()
+                history_str = "\n".join([f"{type(m).__name__}: {m.content}" for m in history[-5:]])
+                system_instruction = (
+                    "SYSTEM: You are CAWNCADE, an AI research assistant. "
+                    "If the user asks a conversational question (e.g. 'what can you do', 'which llm do you use'), "
+                    "you MUST immediately answer directly using 'Final Answer: [your response]'. "
+                    "If they ask you to research, use your tools. "
+                    "Always prioritize a Direct Answer over Perfect Research. Do not over-think or loop endlessly."
+                )
+                chat_input = f"{system_instruction}\n\nCHAT HISTORY:\n{history_str}\n\nUSER NEW MESSAGE: {user_input}"
+                
+                response = await loop.run_in_executor(
+                    None,
+                    lambda: self._core_agent._agent_executor.invoke({"input": chat_input}),
+                )
+                output = response.get("output", "")
+        except Exception as e:
+            log.warning(f"[ChatAgent] LLM execution failed: {e}. Switching to Evidence Assistant Mode.")
+
+        if not output or len(output.strip()) < 10:
+            # ⚡ Fallback: Evidence Assistant Mode (No-LLM Deterministic Engine)
+            log.info("[ChatAgent] Engaging Evidence Assistant Mode (No-LLM Grounded Search + Tier 4 Package).")
+            from app.services.news_service import tiered_search
+            from app.services.tier4 import tier4_verification_service
+            try:
+                search_res = await tiered_search(user_input)
+                sources = search_res.get("sources", [])
+                evidence_text = "\n".join([f"{s.get('title', '')}: {s.get('snippet', '')}" for s in sources[:5]])
+                report = tier4_verification_service.generate_report(user_input, evidence_text, sources_count=len(sources))
+                output = (
+                    f"⚡ **CAWNCADE Evidence Assistant Mode** *(Notice: Generative LLM reasoning is offline; conversational AI planning is disabled. Verification performed via local deterministic search & Tier 4 Verification Engine.)*\n\n"
+                    f"{report}"
+                )
+            except Exception as ex:
+                output = f"⚠️ System Evidence Assistant Error: Unable to perform deterministic verification ({str(ex)})."
+
         history.append(AIMessage(content=output))
         return {"output": output}
+
 
 cawncade_chat_agent = CawncadeChatAgent()

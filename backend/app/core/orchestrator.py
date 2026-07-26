@@ -112,22 +112,27 @@ class Orchestrator:
         query = input_text
         extraction_meta = {"method": "raw_input"}
 
-        # Step 0: Image Pre-Processing (Phase 4)
+        # Step 0: Image Pre-Processing & Vision Model Forensics (Phase 4)
         if image_base64:
             import base64
             from app.services.image_service import extract_image_evidence
+            from app.services.vision_service import analyze_image
             try:
                 # Handle data URI scheme if present
                 base64_data = image_base64.split(",")[1] if "," in image_base64 else image_base64
                 img_bytes = base64.b64decode(base64_data)
                 img_data = extract_image_evidence(img_bytes)
+
+                # Execute Vision Model (HF SigLIP2 / ViT) for deepfake detection
+                vision_res = await analyze_image(image_base64)
                 
-                query = img_data["ocr_text"]
+                ocr_text = img_data.get("ocr_text", "")
+                query = ocr_text if ocr_text.strip() else (user_query or "Image Forensic Analysis")
                 input_text = query
                 input_type = "image"
-                image_metadata = img_data["metadata_context"]
-                extraction_meta = {"method": "image_ocr"}
-                log.info(f"[Orchestrator] 📸 Image processed. OCR Text: '{query[:60]}...'")
+                image_metadata = f"{img_data['metadata_context']}\n[DEEPFAKE ANALYSIS]: {vision_res.get('label', 'UNKNOWN')} (Confidence: {vision_res.get('confidence', 0.0)*100:.1f}%)"
+                extraction_meta = {"method": "image_ocr_and_vision", "vision_analysis": vision_res, "ocr_text": ocr_text}
+                log.info(f"[Orchestrator] 📸 Image processed. Vision: {vision_res.get('label')}, OCR Text: '{query[:60]}...'")
             except Exception as e:
                 log.error(f"[Orchestrator] Image decode/process failed: {e}")
 
@@ -175,21 +180,22 @@ class Orchestrator:
                 "api_stream": yt_result.get("api_stream"),
                 "scraper_stream": yt_result.get("scraper_stream"),
                 "view_count": yt_result.get("view_count", 0),
+                "status": "SUCCESS" if yt_result.get("transcript") else "TRANSCRIPT_UNAVAILABLE",
             }
             if yt_result.get("success"):
-                # Prefer transcript for fact-checking, fall back to description
                 if yt_result.get("transcript"):
-                    query = yt_result["transcript"][:2000]
+                    query = f"{yt_result.get('title', '')} {yt_result['transcript'][:2000]}".strip()
                     extraction_meta["transcript_used"] = True
                 elif yt_result.get("description"):
-                    query = yt_result["description"][:2000]
+                    query = f"{yt_result.get('title', '')} {yt_result['description'][:1000]}".strip()
                     extraction_meta["description_fallback"] = True
+                else:
+                    query = yt_result.get("title", "YouTube Video Claim Analysis")
                 log.info(f"[Orchestrator] YouTube Dual-Stream: API={yt_result.get('api_stream')}, Scraper={yt_result.get('scraper_stream')}, Title='{yt_result.get('title', 'N/A')[:60]}'")
             else:
                 topic = content_extractor.extract_keywords_from_url(input_text)
-                if topic:
-                    query = topic
-                extraction_meta["error"] = yt_result.get("error")
+                query = topic if topic else "YouTube Video Claim Analysis"
+                extraction_meta["error"] = yt_result.get("error", "Transcript extraction failed")
 
         if not query.strip():
             return self._empty_result("Could not extract meaningful content from input.")
