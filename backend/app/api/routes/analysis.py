@@ -17,14 +17,14 @@ router = APIRouter(tags=["analysis"])
 
 
 class AnalyzeRequest(BaseModel):
-    input_text: str = Field(..., min_length=1, max_length=5000, description="Text claim, news URL, or YouTube URL to analyze")
+    input_text: str = Field(..., min_length=1, max_length=5000, description="Text claim, news URL, or YouTube URL to analyze (Max 5,000 chars)")
     input_type: str = Field(default="auto", description="auto | text | url | youtube")
     max_sources: int = Field(default=10, ge=1, le=20)
-    user_query: Optional[str] = Field(default=None, description="Optional user context to guide the analysis")
+    user_query: Optional[str] = Field(default=None, max_length=5000, description="Optional user context to guide the analysis (Max 5,000 chars)")
 
 class ImageAnalyzeRequest(BaseModel):
     image_base64: str = Field(..., min_length=1, description="Base64-encoded image data")
-    user_query: Optional[str] = Field(default=None, description="Optional user context for the image")
+    user_query: Optional[str] = Field(default=None, max_length=5000, description="Optional user context for the image (Max 5,000 chars)")
 
 
 class FeedbackRequest(BaseModel):
