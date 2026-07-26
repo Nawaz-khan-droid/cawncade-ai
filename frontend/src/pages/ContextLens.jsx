@@ -145,6 +145,37 @@ export default function ContextLens() {
               animate={{ opacity: 1, height: 'auto' }}
               className="border-t border-borderBase-light dark:border-borderBase-dark pt-8 mt-4 flex flex-col gap-6"
             >
+              {/* VERDICT HERO BANNER */}
+              {(() => {
+                let badgeColor = "bg-amber-500/10 border-amber-500/30 text-amber-400";
+                let verdictTitle = "UNVERIFIED / NO TRUSTED COVERAGE";
+
+                if (result.status === "debunked" || (result.scores?.confidence === 0 && result.context_summary?.toLowerCase().includes("debunk"))) {
+                  badgeColor = "bg-rose-500/10 border-rose-500/30 text-rose-400";
+                  verdictTitle = "FALSE / DEBUNKED CLAIM";
+                } else if (result.confidence >= 70) {
+                  badgeColor = "bg-emerald-500/10 border-emerald-500/30 text-emerald-400";
+                  verdictTitle = "VERIFIED TRUE / HIGH CONFIDENCE";
+                } else if (result.agent_deep_dive?.includes("PRELIMINARY ASSESSMENT")) {
+                  badgeColor = "bg-sky-500/10 border-sky-500/30 text-sky-400";
+                  verdictTitle = "PRELIMINARY ASSESSMENT (LOCAL NLP)";
+                }
+
+                return (
+                  <div className={`flex items-center justify-between p-4 rounded-xl border ${badgeColor} shadow-sm`}>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-extrabold uppercase tracking-widest px-2.5 py-1 rounded-md bg-white/10">
+                        VERDICT
+                      </span>
+                      <span className="text-base font-bold tracking-wide">{verdictTitle}</span>
+                    </div>
+                    <span className="text-xs font-semibold opacity-80">
+                      Score: {Math.round(result.confidence || 0)}%
+                    </span>
+                  </div>
+                );
+              })()}
+
               <div className="flex flex-col gap-2">
                 <h3 className="text-2xl font-display font-bold text-slate-900 dark:text-white">Analysis Result</h3>
                 <p className="text-sm text-textMuted-light dark:text-textMuted-dark leading-relaxed">

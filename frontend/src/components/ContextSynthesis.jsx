@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText } from 'lucide-react';
+import { FileText, ExternalLink, CheckCircle2, XCircle, AlertTriangle, HelpCircle, Info } from 'lucide-react';
 
 export default function ContextSynthesis({ summary, isLoading }) {
   if (isLoading) {
@@ -21,39 +21,119 @@ export default function ContextSynthesis({ summary, isLoading }) {
 
   if (!summary) return null;
 
-  // Simple Markdown parser for bold and citations
-  // Example citation: [1] Reuters -> UI Badge
-  const parseMarkdown = (text) => {
+  // Clean raw HTML tags (e.g. <ol>, <li>, <a href...>) that might leak in from news feeds
+  let cleanText = summary.replace(/<[^>]*>/g, '');
+
+  // Extract explicit VERDICT if present at the top
+  let verdictType = null;
+  let verdictText = null;
+  const verdictMatch = cleanText.match(/^VERDICT:\s*([^\n]+)/i);
+
+  if (verdictMatch) {
+    verdictText = verdictMatch[1].trim();
+    cleanText = cleanText.replace(/^VERDICT:\s*[^\n]+\n*/i, '');
+
+    const upper = verdictText.toUpperCase();
+    if (upper.includes('TRUE') || upper.includes('VERIFIED') || upper.includes('CORROBORATED')) {
+      verdictType = 'true';
+    } else if (upper.includes('FALSE') || upper.includes('DEBUNKED') || upper.includes('FAKE')) {
+      verdictType = 'false';
+    } else if (upper.includes('PRELIMINARY')) {
+      verdictType = 'preliminary';
+    } else {
+      verdictType = 'unverified';
+    }
+  }
+
+  // Render Verdict Badge
+  const renderVerdictBadge = () => {
+    if (!verdictText) return null;
+
+    const styles = {
+      true: {
+        bg: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
+        icon: CheckCircle2,
+        label: 'VERIFIED TRUE',
+      },
+      false: {
+        bg: 'bg-rose-500/10 border-rose-500/30 text-rose-400',
+        icon: XCircle,
+        label: 'VERIFIED FALSE / DEBUNKED',
+      },
+      preliminary: {
+        bg: 'bg-sky-500/10 border-sky-500/30 text-sky-400',
+        icon: Info,
+        label: 'PRELIMINARY ASSESSMENT',
+      },
+      unverified: {
+        bg: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
+        icon: AlertTriangle,
+        label: 'UNVERIFIED / UNCONFIRMED',
+      },
+    };
+
+    const current = styles[verdictType] || styles.unverified;
+    const Icon = current.icon;
+
+    return (
+      <div className={`flex items-center gap-3 p-4 rounded-xl border ${current.bg} mb-6 transition-all shadow-sm`}>
+        <Icon className="w-6 h-6 shrink-0" />
+        <div className="flex flex-col">
+          <span className="text-xs font-bold tracking-wider uppercase opacity-80">{current.label}</span>
+          <span className="text-sm font-semibold">{verdictText}</span>
+        </div>
+      </div>
+    );
+  };
+
+  // Convert raw URLs or Markdown links into clean UI badges
+  const renderFormattedText = (text) => {
     if (!text) return null;
-    
-    // First, split by bold text
-    const parts = text.split(/(\*\*.*?\*\*)/g);
-    
-    return parts.map((part, index) => {
-      if (part.startsWith('**') && part.endsWith('**')) {
-        return <strong key={index} className="text-white font-semibold">{part.slice(2, -2)}</strong>;
-      }
-      
-      // Then replace citations [X] Name
-      const citationRegex = /(\[\d+\][^\.,\s]*\s[\w\s]+?(?=[,\.]|\s|$))/g;
-      const subParts = part.split(citationRegex);
-      
-      return subParts.map((sub, idx) => {
-        const match = sub.match(/^\[(\d+)\]\s*(.*)$/);
-        if (match) {
-          return (
-            <a 
-              key={`${index}-${idx}`} 
-              href={`#source-${match[1]}`}
-              className="inline-flex items-center gap-1 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 px-2 py-0.5 rounded-md text-xs font-medium transition-colors cursor-pointer mx-1 no-underline"
-            >
-              <span className="opacity-70">[{match[1]}]</span>
-              {match[2]}
-            </a>
-          );
-        }
-        return <span key={`${index}-${idx}`}>{sub}</span>;
-      });
+
+    // Pattern for URLs: https://...
+    const urlRegex = /(https?:\/\/[^\s<]+)/g;
+
+    const paragraphs = text.split('\n\n').filter(Boolean);
+
+    return paragraphs.map((para, pIdx) => {
+      const parts = para.split(urlRegex);
+
+      return (
+        <p key={pIdx} className="mb-4 leading-relaxed whitespace-pre-wrap break-words">
+          {parts.map((part, idx) => {
+            if (part.match(/^https?:\/\//)) {
+              let domain = part;
+              try {
+                domain = new URL(part).hostname.replace('www.', '');
+              } catch (e) {
+                domain = 'Source Link';
+              }
+
+              return (
+                <a
+                  key={idx}
+                  href={part}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 mx-1 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/25 rounded-md text-xs font-medium transition-colors no-underline align-middle"
+                >
+                  <span>🔗 {domain}</span>
+                  <ExternalLink className="w-3 h-3 opacity-70" />
+                </a>
+              );
+            }
+
+            // Bold formatting **text**
+            const boldParts = part.split(/(\*\*.*?\*\*)/g);
+            return boldParts.map((bPart, bIdx) => {
+              if (bPart.startsWith('**') && bPart.endsWith('**')) {
+                return <strong key={bIdx} className="text-white font-semibold">{bPart.slice(2, -2)}</strong>;
+              }
+              return <span key={bIdx}>{bPart}</span>;
+            });
+          })}
+        </p>
+      );
     });
   };
 
@@ -63,9 +143,11 @@ export default function ContextSynthesis({ summary, isLoading }) {
         <FileText className="w-5 h-5 text-primary" />
         <h2 className="text-xl font-semibold text-white">Context Synthesis</h2>
       </div>
-      
+
+      {renderVerdictBadge()}
+
       <div className="prose prose-invert max-w-none text-text leading-relaxed text-sm md:text-base w-full overflow-hidden">
-        <p className="whitespace-pre-wrap break-words">{parseMarkdown(summary)}</p>
+        {renderFormattedText(cleanText)}
       </div>
     </div>
   );

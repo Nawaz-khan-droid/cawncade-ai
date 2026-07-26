@@ -258,7 +258,8 @@ class Orchestrator:
         # Step 8: Phase 3 - Agent Deep Dive (optional, runs in parallel with synthesis)
         agent_report = ""
         try:
-            evidence_context = "\n".join([f"- {s.get('title', '')}: {s.get('snippet', '')[:200]}" for s in sources[:5]])
+            clean_snippets = [re.sub(r'<[^>]+>', ' ', s.get('snippet', '')) for s in sources[:5]]
+            evidence_context = "\n".join([f"- {s.get('title', '')}: {clean_snippets[i][:200]}" for i, s in enumerate(sources[:5])])
             
             # Phase 4: Inject Image OCR Text & Metadata Tampering Flags directly into the ReAct loop
             if image_metadata:

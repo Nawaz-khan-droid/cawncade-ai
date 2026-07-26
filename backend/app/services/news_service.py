@@ -203,6 +203,17 @@ async def search_tavily(query: str, trusted_only: bool = False):
 # ═══════════════════════════════════════════════════════════════
 # TIER 5: Google News RSS & GDELT
 # ═══════════════════════════════════════════════════════════════
+import re
+import html
+
+def clean_html(text: str) -> str:
+    """Strips raw HTML tags and unescapes entities from web snippets."""
+    if not text:
+        return ""
+    clean = re.sub(r'<[^>]+>', ' ', text)
+    clean = html.unescape(clean)
+    return " ".join(clean.split())
+
 async def search_google_news_rss(query: str) -> list:
     """Tier 5: Google News RSS — now wrapped in circuit_google_news (BUG-02 fixed)."""
     encoded = urllib.parse.quote_plus(query[:300])
@@ -214,7 +225,7 @@ async def search_google_news_rss(query: str) -> list:
             resp.raise_for_status()
             feed = feedparser.parse(resp.text)
             return [{
-                "url": e.link, "title": e.title, "snippet": e.summary,
+                "url": e.link, "title": clean_html(e.title), "snippet": clean_html(e.summary),
                 "source_name": "Google News", "channel": "google_news_rss",
                 "retrieval_tier": "tier_5"
             } for e in feed.entries[:5]]
