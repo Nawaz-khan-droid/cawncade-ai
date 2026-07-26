@@ -243,11 +243,11 @@ class CawncadeAgent:
 
             # ── Multi-Provider Hybrid Fallback Wrapper ─────────
             try:
-                log.info("[Agent] 🚀 Launching Tier 1: OpenRouter (Llama 3.3-70B)...")
+                log.info("[Agent] 🚀 Launching Tier 1: OpenRouter (NVIDIA Nemotron 3 Super 120B Free)...")
                 primary_llm = ChatOpenAI(
                     base_url="https://openrouter.ai/api/v1",
                     api_key=openrouter_key,
-                    model="meta-llama/llama-3.3-70b-instruct",
+                    model="nvidia/nemotron-3-super-120b-a12b:free",
                     temperature=0.01,
                     max_tokens=1024,
                     model_kwargs={"extra_headers": {"HTTP-Referer": "http://localhost:3000", "X-Title": "Cawncade AI"}}
@@ -255,7 +255,7 @@ class CawncadeAgent:
                 primary_llm.invoke("ping")
                 self.llm = primary_llm
             except Exception as e1:
-                log.warning(f"[Agent] ⚠️ Tier 1 connection dropped: {e1}. Cascading downstream...")
+                log.warning(f"[Agent] ⚠️ Tier 1 OpenRouter connection dropped/unavailable: {e1}. Cascading to Tier 2 HF Router (Groq Llama 3.3 70B)...")
                 
                 # ── Tier 2: Hugging Face Router API + Groq LPU Engine ──
                 hf_token = getattr(settings, "HUGGINGFACEHUB_API_TOKEN", None) or getattr(settings, "HUGGINGFACE_API_TOKEN", None) or os.getenv("HUGGINGFACEHUB_API_TOKEN")

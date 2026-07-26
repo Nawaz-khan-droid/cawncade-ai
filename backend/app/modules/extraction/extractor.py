@@ -30,6 +30,8 @@ class ContentExtractor:
             "keywords": "",
             "success": False,
             "extraction_status": "FAILED",
+            "error_type": "UNKNOWN",
+            "user_message": "",
             "fallback_used": False,
             "original_url": url,
         }
@@ -40,6 +42,8 @@ class ContentExtractor:
         if not is_safe:
             log.warning(f"[Extractor] {error_reason} Target: {url}")
             result["error"] = error_reason
+            result["error_type"] = "BLOCKED"
+            result["user_message"] = "Security Warning: Target URL is restricted from server-side fetching."
             result["keywords"] = self.extract_keywords_from_url(url)
             return result
 
