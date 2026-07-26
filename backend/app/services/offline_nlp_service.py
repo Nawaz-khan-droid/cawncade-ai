@@ -16,20 +16,50 @@ try:
 except ImportError:
     HAS_SUMY = False
 
+try:
+    import spacy
+    try:
+        nlp_spacy = spacy.load("en_core_web_sm")
+    except Exception:
+        nlp_spacy = spacy.blank("en")
+    HAS_SPACY = True
+except Exception:
+    HAS_SPACY = False
+
 
 class OfflineNLPService:
     """
     Tier 4 Deterministic Offline Evidence Processing Engine.
-    Extractive LexRank Summarizer + Entity Extractor (People, Orgs, Locs, Dates)
+    Extractive LexRank Summarizer + Cascade Entity Extractor (spaCy -> NLTK -> Regex)
     + Grounded Rule-Based Verdict Calculator.
     """
 
     def extract_entities(self, text: str) -> dict:
-        """Extracts People, Organizations, Locations, & Dates locally via NLTK / Regex."""
+        """Extracts People, Organizations, Locations, & Dates via spaCy -> NLTK -> Regex."""
         entities = {"people": [], "organizations": [], "locations": [], "dates": []}
         if not text:
             return entities
 
+        # 1. Primary NER: spaCy (if available)
+        if HAS_SPACY and nlp_spacy:
+            try:
+                doc = nlp_spacy(text[:3000])
+                for ent in doc.ents:
+                    val = ent.text.strip()
+                    if ent.label_ == "PERSON" and val not in entities["people"]:
+                        entities["people"].append(val)
+                    elif ent.label_ in ("ORG", "ORGANIZATION") and val not in entities["organizations"]:
+                        entities["organizations"].append(val)
+                    elif ent.label_ in ("GPE", "LOC", "LOCATION") and val not in entities["locations"]:
+                        entities["locations"].append(val)
+                    elif ent.label_ == "DATE" and val not in entities["dates"]:
+                        entities["dates"].append(val)
+                if any(entities.values()):
+                    return entities
+            except Exception as e:
+                log.warning(f"[OfflineNLP] spaCy NER failed: {e}. Falling back to NLTK.")
+
+        # 2. Secondary NER: NLTK ne_chunk
         try:
             import nltk
             words = nltk.word_tokenize(text[:3000])
@@ -47,14 +77,16 @@ class OfflineNLPService:
                     elif label in ("GPE", "LOCATION") and name not in entities["locations"]:
                         entities["locations"].append(name)
         except Exception:
-            # Pattern matching fallback
-            org_matches = re.findall(r"\b[A-Z][a-z]+ (?:Corporation|Inc|LLC|Tech|Group|News|Gov|Ministry|Department)\b", text)
-            entities["organizations"] = list(set(org_matches[:5]))
+            pass
+
+        # 3. Fallback: Regex for dates & corporate patterns
+        org_matches = re.findall(r"\b[A-Z][a-z]+ (?:Corporation|Inc|LLC|Tech|Group|News|Gov|Ministry|Department)\b", text)
+        entities["organizations"] = list(set(entities["organizations"] + org_matches[:5]))
 
         date_matches = re.findall(
             r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4}\b|\b\d{4}\b", text, re.I
         )
-        entities["dates"] = list(set(date_matches[:5]))
+        entities["dates"] = list(set(entities["dates"] + date_matches[:5]))
 
         return entities
 

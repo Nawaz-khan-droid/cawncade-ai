@@ -300,22 +300,21 @@ async def search_you_com(query: str) -> list:
 async def tiered_search(query: str, max_sources: int = 10, **kwargs) -> dict:
     log.info(f"[Search] Executing Rescue Plan search: '{query[:60]}'")
 
-    # THE NEW LADDER: Most reliable APIs first.
+    # THE NEW LADDER: Most reliable APIs first (Google CSE removed per specification).
     tasks = [
-        search_serper(query),                           # Tier 1 (New, highly reliable)
-        search_tavily(query, trusted_only=False),       # Tier 2 (Proven to work)
-        search_you_com(query),                          # Tier 2 (New, highly reliable)
-        search_newsdata(query),                         # Tier 3 (Proven to work)
-        search_google_news_rss(query),                  # Tier 4 (Free, reliable)
-        search_google_custom(query, trusted_only=True), # Tier 5 (IP bans likely)
-        search_duckduckgo(query),                       # Tier 5 (Last resort, won't crash if 0)
+        search_serper(query),                           # Tier 1 (Google Serper API)
+        search_tavily(query, trusted_only=False),       # Tier 2 (Tavily AI Search)
+        search_you_com(query),                          # Tier 2 (You.com Index API)
+        search_newsdata(query),                         # Tier 3 (NewsData)
+        search_google_news_rss(query),                  # Tier 4 (Free Google News RSS)
+        search_duckduckgo(query),                       # Tier 5 (DuckDuckGo Fallback)
     ]
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
     all_sources = []
     tier_stats = {}
     
-    tier_names = ["serper", "tavily", "you_com", "newsdata", "rss", "google", "duckduckgo"]
+    tier_names = ["serper", "tavily", "you_com", "newsdata", "rss", "duckduckgo"]
 
     for i, result in enumerate(results):
         name = tier_names[i]

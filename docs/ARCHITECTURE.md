@@ -47,7 +47,14 @@ CAWNCADE AI is a multi-tiered, fault-tolerant news verification platform and cla
   1. Tier 1: OpenRouter (`nvidia/nemotron-3-super-120b-a12b:free`)
   2. Tier 2: HuggingFace Router Groq (`meta-llama/Llama-3.3-70B-Instruct:groq`)
   3. Tier 3: HuggingFace Router DeepInfra (`google/gemma-3-27b-it:deepinfra`)
-  4. Tier 4: Offline Deterministic Grounded Mode (`app/services/offline_nlp_service.py` LexRank + Entity Extractor)
+  4. Tier 4: Offline Deterministic Grounded Mode (`app/services/offline_nlp_service.py` with Sumy LexRank + spaCy/NLTK/Regex NER)
+- **Search Stack (Active Engines)**:
+  - Serper.dev Google API (Tier 1)
+  - Tavily AI Search + You.com Index API (Tier 2)
+  - NewsData.io (Tier 3)
+  - Google News RSS (Tier 4)
+  - DuckDuckGo Fallback (Tier 5)
+  *(Note: Non-functional legacy Google CSE is explicitly excluded)*
 - **Semantic Vector Cache**: FAISS (`faiss-cpu`) + `sentence-transformers/all-MiniLM-L6-v2` (`app/services/cache_service.py`).
 - **Resilience**: Custom state-machine CircuitBreaker (`app/core/resilience.py`), Tenacity exponential backoff retries.
 
@@ -75,7 +82,7 @@ flowchart TD
             Tier0[Tier 0: Dictionary Matcher]
             TierCache[FAISS Vector Cache: IndexFlatIP 384d]
             FactCheck[Pre-Flight: Google Fact Check API]
-            SearchTiers[7-Tier Search: Serper -> Tavily -> You.com -> NewsData -> RSS -> Google CSE -> DDG]
+            SearchTiers[Active Search Stack: Serper -> Tavily -> You.com -> NewsData -> RSS -> DDG]
         end
         
         subgraph AI Agent Reasoning
@@ -157,7 +164,7 @@ sequenceDiagram
         end
     end
     Orch->>Search: tiered_search(query)
-    Search-->>Orch: Web Citations
+    Search-->>Orch: Web Citations (Serper, Tavily, You.com, RSS)
     Orch->>LLM: run_investigation(query, evidence)
     LLM-->>Orch: Synthesis (Nemotron 120B / Groq 70B / DeepInfra 27B / Local LexRank)
     Orch->>FE: Payload + system_metadata
@@ -300,7 +307,7 @@ backend/app/
 │   ├── cache_service.py     # FAISS CPU vector cache (SentenceTransformers)
 │   ├── dictionary_matcher.py# Tier 0 local viral claim cache
 │   ├── fact_check_service.py# Google Fact Check API integration
-│   ├── news_service.py      # 7-Tier web search engine (Serper, Tavily, DDG, RSS, GDELT)
+│   ├── news_service.py      # Multi-tier web search engine (Serper, Tavily, You.com, NewsData, RSS, DDG)
 │   ├── offline_nlp_service.py # Tier 4 Deterministic Offline NLP & Entity Extraction Engine
 │   ├── safe_browsing_service.py # Google Safe Browsing & SSRF DNS guard
 │   ├── vision_service.py    # HF Inference ViT/SigLIP2 deepfake analysis
@@ -355,37 +362,21 @@ flowchart LR
     Tier2 -->|Success| GroqLlama[Llama 3.3 70B via Groq LPU]
     Tier2 -->|Fail / Timeout| Tier3{Tier 3: HF Router DeepInfra}
     Tier3 -->|Success| Gemma27B[Gemma 3 27B via DeepInfra]
-    Tier3 -->|Fail / Timeout| Tier4[Tier 4: Offline Grounded Mode - LexRank + Entity Extractor]
+    Tier3 -->|Fail / Timeout| Tier4[Tier 4: Offline Grounded Mode - Sumy LexRank + NER Cascade]
 ```
 
 ### Provider Cascade Policy
 - **Primary (Tier 1)**: OpenRouter `nvidia/nemotron-3-super-120b-a12b:free` for high-parameter multi-step ReAct reasoning.
 - **Fallback 1 (Tier 2)**: Hugging Face Router Meta Llama 3.3 70B Instruct via Groq LPU engine.
 - **Fallback 2 (Tier 3)**: Hugging Face Router Google Gemma 3 27B via DeepInfra engine.
-- **Fallback 3 (Tier 4)**: Local CPU Extractive NLP (`offline_nlp_service.py` LexRank + Entity Extractor for People, Orgs, Locations, Dates) when all online LLM endpoints are unreachable.
+- **Fallback 3 (Tier 4)**: Local CPU Extractive NLP (`offline_nlp_service.py` using `sumy` LexRank + `spaCy` -> `NLTK` -> `Regex` NER cascade for People, Orgs, Locations, Dates) when all online LLM endpoints are unreachable.
 
-### Tier 4 Capabilities vs. Limitations Matrix
-
-| Tier 4 Capabilities (Grounded Mode) | Tier 4 Limitations (No LLM) |
-| :--- | :--- |
-| ✅ Objective Extractive Summarization (LexRank) | ❌ No Generative AI Reasoning / Synthesis |
-| ✅ Entity Extraction (People, Orgs, Locations, Dates) | ❌ Cannot invent creative narrative explanations |
-| ✅ Multi-Source Citation Alignment & Count | ❌ Limited nuanced contradiction resolution |
-| ✅ Grounded Rule-Based Confidence Calculation | ❌ Cannot replace deep contextual LLM analysis |
-
-### Telemetry Metadata Payload (`system_metadata`)
-Every response payload includes diagnostic telemetry tracking execution details:
-
-```json
-{
-  "system_metadata": {
-    "model_used": "nvidia/nemotron-3-super-120b-a12b:free",
-    "llm_tier": "tier_1_openrouter",
-    "fallback_used": false,
-    "latency_ms": 4200
-  }
-}
-```
+### Verified Code Implementations
+- **Summarization**: `sumy` (`LexRankSummarizer`) extracts central sentences based on graph centrality.
+- **NER Cascade Engine**:
+  1. `spaCy` (`en_core_web_sm`) -> Extracts `PERSON`, `ORG`, `GPE`, `DATE` entities.
+  2. `NLTK` (`ne_chunk`) -> Extracts named entity trees.
+  3. `Regex` -> Corporate suffix matching (`Inc`, `Corporation`, `LLC`) & date parsing (`Jan 15, 2025`).
 
 ---
 
@@ -443,7 +434,7 @@ CAWNCADE uses a custom `CircuitBreaker` class (`app/core/resilience.py`) with `C
 | **Jina Reader Fetch** | `httpx.AsyncClient` | 15.0s | N/A | Fallback to `httpx` + `BeautifulSoup`. |
 | **HTTP Fallback Fetch**| `httpx.AsyncClient` | 15.0s | N/A | Fallback to URL slug keyword search. |
 | **Google Safe Browsing**| `httpx.AsyncClient` | 10.0s | `circuit_safe_browsing` | Returns `safe: True` with warning log. |
-| **Tiered Web Search** | `news_service.py` | 15.0s | `circuit_google_search`, `circuit_tavily` | Cascades through 7 search tiers. |
+| **Tiered Web Search** | `news_service.py` | 15.0s | `circuit_google_search`, `circuit_tavily` | Cascades through Serper -> Tavily -> You.com -> NewsData -> RSS -> DDG. |
 | **ReAct LLM Investigation**| `CawncadeAgent` | 30.0s | `circuit_agent` | Fallback to LexRank Extractive NLP (`offline_nlp_service.py`). |
 
 ---
@@ -456,7 +447,7 @@ CAWNCADE uses a custom `CircuitBreaker` class (`app/core/resilience.py`) with `C
 | **Jina Primary Extractor** | [extractor.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/modules/extraction/extractor.py#L34-L65) | URL submit via ContextLens | `method: "jina_reader"`, text >= 1000 chars, status: `SUCCESS` |
 | **5MB Response Byte Cap** | [extractor.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/modules/extraction/extractor.py#L70-L85) | Stream byte count check | Aborts download if > 5MB; returns size cap warning. |
 | **FAISS Vector Cache** | [cache_service.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/services/cache_service.py#L60-L90) | Submit identical claim | `< 50ms` Instant Cache Hit with `confidence_label: "CACHED"` |
-| **Tier 4 Offline Grounded**| [offline_nlp_service.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/services/offline_nlp_service.py) | [test_tier4_fallback.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/tests/test_tier4_fallback.py) | `model_used: "local_lexrank_nlp"`, extracted key sentences + detected entities |
+| **Tier 4 Offline Grounded**| [offline_nlp_service.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/services/offline_nlp_service.py) | [test_tier4_fallback.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/tests/test_tier4_fallback.py) | `model_used: "local_lexrank_nlp"`, extracted key sentences + detected entities via spaCy/NLTK |
 | **Deepfake Detection** | [vision_service.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/services/vision_service.py#L16-L65) | Image upload via VisualLens | `normalized: "AI-GENERATED/DEEPFAKE"` with score confidence % |
 | **YouTube Transcript** | [youtube_service.py](file:///C:/Users/ks919/Downloads/CAWNCADE%20AI/backend/app/services/youtube_service.py#L15-L60) | YouTube URL submit | Dual-stream API + Scraper transcript text extraction |
 
