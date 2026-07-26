@@ -180,6 +180,63 @@ sequenceDiagram
 
 ---
 
+### 3.3 VisualLens Pipeline (Images & Forensics)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant FE as VisualLens.jsx
+    participant API as FastAPI (/api/v1/analyze/image)
+    participant Orch as Orchestrator
+    participant Vis as Vision Service (vision_service.py)
+    participant Img as Image Service (image_service.py)
+    participant LLM as 4-Tier LLM Router
+
+    User->>FE: Uploads Image File (Base64)
+    FE->>API: POST /api/v1/analyze/image {image_base64: b64, user_query: q}
+    API->>Orch: orchestrator.process_image(b64)
+    Orch->>Img: extract_image_evidence(img_bytes)
+    Img->>Img: OCR Text Extraction (pytesseract) + EXIF Metadata
+    Img-->>Orch: {ocr_text, metadata_context}
+    Orch->>Vis: analyze_image(b64)
+    Vis->>Vis: Call HF Inference API (ViT/SigLIP2 Model)
+    Vis-->>Orch: {label: "AI-GENERATED/DEEPFAKE", confidence: 0.94}
+    Orch->>LLM: run_investigation(ocr_text, image_metadata)
+    LLM-->>Orch: Visual Forensic Explanation
+    Orch->>FE: 5-Card Forensics Payload
+    FE->>User: Render Deepfake Badge, EXIF Details & OCR Evidence
+```
+
+---
+
+### 3.4 YouTube Pipeline (Dual-Stream Transcripts)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant FE as VisualLens.jsx / ContextLens.jsx
+    participant API as FastAPI (/api/v1/analyze)
+    participant Orch as Orchestrator
+    participant YT as YouTube Service (youtube_service.py)
+    participant LLM as 4-Tier LLM Router
+
+    User->>FE: Submits YouTube URL
+    FE->>API: POST /api/v1/analyze {input_text: yt_url, input_type: "youtube"}
+    API->>Orch: orchestrator.process(yt_url)
+    Orch->>YT: analyze_youtube(yt_url)
+    YT->>YT: Stream 1: YouTube Data API (Metadata)
+    YT->>YT: Stream 2: youtube_transcript_api / Scraper (Captions)
+    YT-->>Orch: {title, channel, transcript, api_stream, scraper_stream}
+    Orch->>LLM: run_investigation(transcript[:2000], evidence)
+    LLM-->>Orch: Synthesis of Video Claims
+    Orch->>FE: Return Structured JSON Result
+    FE->>User: Render ResultHero + Video Transcript Highlights
+```
+
+---
+
 ## 4. Failure-State & Resiliency Flowcharts
 
 ```
