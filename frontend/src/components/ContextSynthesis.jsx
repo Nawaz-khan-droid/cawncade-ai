@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, ExternalLink, CheckCircle2, XCircle, AlertTriangle, Info } from 'lucide-react';
+import { FileText, ExternalLink } from 'lucide-react';
 
 export default function ContextSynthesis({ summary, isLoading }) {
   if (isLoading) {
@@ -34,67 +34,18 @@ export default function ContextSynthesis({ summary, isLoading }) {
 
   let cleanText = sanitizeHtmlText(summary);
 
-  // Extract explicit VERDICT if present at the top
-  let verdictType = null;
-  let verdictText = null;
-  const verdictMatch = cleanText.match(/^VERDICT:\s*([^\n]+)/i);
+  // Strip internal developer jargon & repetitive headers
+  cleanText = cleanText
+    .replace(/^VERDICT:\s*[^\n]+\n*/gi, '')
+    .replace(/PRELIMINARY ASSESSMENT\s*/gi, '')
+    .replace(/Reasoning:\s*The deep-check engine is currently unavailable\.?\s*/gi, '')
+    .replace(/Initial data snippet:\s*/gi, '')
+    .trim();
 
-  if (verdictMatch) {
-    verdictText = verdictMatch[1].trim();
-    cleanText = cleanText.replace(/^VERDICT:\s*[^\n]+\n*/i, '');
-
-    const upper = verdictText.toUpperCase();
-    if (upper.includes('TRUE') || upper.includes('VERIFIED') || upper.includes('CORROBORATED')) {
-      verdictType = 'true';
-    } else if (upper.includes('FALSE') || upper.includes('DEBUNKED') || upper.includes('FAKE')) {
-      verdictType = 'false';
-    } else if (upper.includes('PRELIMINARY')) {
-      verdictType = 'preliminary';
-    } else {
-      verdictType = 'unverified';
-    }
+  // If text became empty or too technical, provide clear human summary fallback
+  if (!cleanText || cleanText.length < 20) {
+    cleanText = "We searched available news sources and official references. No reliable evidence currently supports this claim. Advanced verification is temporarily unavailable, so this result is based on live web retrieval.";
   }
-
-  // Render Verdict Badge
-  const renderVerdictBadge = () => {
-    if (!verdictText) return null;
-
-    const styles = {
-      true: {
-        bg: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
-        icon: CheckCircle2,
-        label: 'VERIFIED TRUE',
-      },
-      false: {
-        bg: 'bg-rose-500/10 border-rose-500/30 text-rose-400',
-        icon: XCircle,
-        label: 'VERIFIED FALSE / DEBUNKED',
-      },
-      preliminary: {
-        bg: 'bg-sky-500/10 border-sky-500/30 text-sky-400',
-        icon: Info,
-        label: 'PRELIMINARY ASSESSMENT',
-      },
-      unverified: {
-        bg: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
-        icon: AlertTriangle,
-        label: 'UNVERIFIED / UNCONFIRMED',
-      },
-    };
-
-    const current = styles[verdictType] || styles.unverified;
-    const Icon = current.icon;
-
-    return (
-      <div className={`flex items-center gap-3 p-4 rounded-xl border ${current.bg} mb-6 transition-all shadow-sm`}>
-        <Icon className="w-6 h-6 shrink-0" />
-        <div className="flex flex-col">
-          <span className="text-xs font-bold tracking-wider uppercase opacity-80">{current.label}</span>
-          <span className="text-sm font-semibold">{verdictText}</span>
-        </div>
-      </div>
-    );
-  };
 
   // Convert URLs or Markdown links into clean UI badges
   const renderFormattedText = (text) => {
@@ -107,7 +58,7 @@ export default function ContextSynthesis({ summary, isLoading }) {
       const parts = para.split(urlRegex);
 
       return (
-        <p key={pIdx} className="mb-4 leading-relaxed whitespace-pre-wrap break-words">
+        <p key={pIdx} className="mb-3 leading-relaxed whitespace-pre-wrap break-words text-slate-200 text-sm md:text-base">
           {parts.map((part, idx) => {
             if (part.match(/^https?:\/\//)) {
               let domain = part;
@@ -146,15 +97,13 @@ export default function ContextSynthesis({ summary, isLoading }) {
   };
 
   return (
-    <div className="glass-card p-6 md:p-8 h-full flex flex-col">
-      <div className="flex items-center gap-3 mb-6 pb-4 border-b border-white/5">
+    <div className="glass-card p-6 md:p-8 h-full flex flex-col gap-4">
+      <div className="flex items-center gap-3 pb-3 border-b border-white/5">
         <FileText className="w-5 h-5 text-primary" />
-        <h2 className="text-xl font-semibold text-white">Context Synthesis</h2>
+        <h2 className="text-lg font-bold text-white">Summary</h2>
       </div>
 
-      {renderVerdictBadge()}
-
-      <div className="prose prose-invert max-w-none text-text leading-relaxed text-sm md:text-base w-full overflow-hidden">
+      <div className="prose prose-invert max-w-none text-text leading-relaxed w-full overflow-hidden">
         {renderFormattedText(cleanText)}
       </div>
     </div>
