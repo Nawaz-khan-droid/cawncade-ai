@@ -108,6 +108,13 @@ class Orchestrator:
 
         # Step 1.5: Extract content for URLs/YouTube
         if input_type == "url":
+            # Check SSRF before scraping
+            from app.services.safe_browsing_service import is_ssrf_safe_url
+            is_safe, error_reason = is_ssrf_safe_url(input_text)
+            if not is_safe:
+                log.warning(f"[Orchestrator] SSRF Security Block: {input_text}")
+                return self._empty_result(f"Security Block: The submitted URL target is prohibited ({error_reason}).")
+
             extraction = await content_extractor.extract_from_url(input_text)
             if extraction.get("title") or extraction.get("text"):
                 query = f"{extraction.get('title', '')} {extraction.get('text', '')[:500]}".strip()

@@ -26,6 +26,15 @@ class ContentExtractor:
     async def extract_from_url(self, url: str) -> dict:
         result = {"title": "", "text": "", "keywords": "", "success": False, "original_url": url}
 
+        # SSRF Security Guard Check
+        from app.services.safe_browsing_service import is_ssrf_safe_url
+        is_safe, error_reason = is_ssrf_safe_url(url)
+        if not is_safe:
+            log.warning(f"[Extractor] {error_reason} Target: {url}")
+            result["error"] = error_reason
+            result["keywords"] = self.extract_keywords_from_url(url)
+            return result
+
         try:
             client_kwargs = {"timeout": self.timeout, "follow_redirects": True, "headers": self.headers}
 
@@ -79,20 +88,24 @@ class ContentExtractor:
                 log.info(f"[Extractor] Extracted: '{result['title'][:80]}'")
             else:
                 log.warning(f"[Extractor] No content found at {url}")
+                result["text"] = "Unable to extract main article text due to access restrictions or client-side rendering. Web search citations will be used for verification."
 
         except httpx.TimeoutException:
             log.warning(f"[Extractor] Timeout: {url}")
             result["keywords"] = self.extract_keywords_from_url(url)
+            result["text"] = "URL request timed out after 15 seconds. Web search citations will be used for verification."
             if result["keywords"]:
                 result["success"] = True
         except httpx.HTTPStatusError as e:
             log.error(f"[Extractor] HTTP {e.response.status_code}: {url}")
             result["keywords"] = self.extract_keywords_from_url(url)
+            result["text"] = f"HTTP {e.response.status_code} error fetching URL. Web search citations will be used for verification."
             if result["keywords"]:
                 result["success"] = True
         except Exception as e:
             log.error(f"[Extractor] Error: {url}: {e}")
             result["keywords"] = self.extract_keywords_from_url(url)
+            result["text"] = f"Extraction anomaly ({str(e)}). Web search citations will be used for verification."
             if result["keywords"]:
                 result["success"] = True
 
