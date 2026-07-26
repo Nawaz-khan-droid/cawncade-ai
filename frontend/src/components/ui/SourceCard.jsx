@@ -44,26 +44,28 @@ export default function SourceCard({ src }) {
       href={src.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="p-4 rounded-xl bg-surface-light/60 dark:bg-surface-dark/60 border border-borderBase-light dark:border-borderBase-dark hover:border-primary/40 transition-all flex flex-col gap-2.5 group focus:outline-none focus:ring-2 focus:ring-primary/50"
+      className="p-3.5 md:p-4 rounded-xl bg-surface-light/60 dark:bg-surface-dark/60 border border-borderBase-light dark:border-borderBase-dark hover:border-primary/40 transition-all flex flex-col gap-2 group focus:outline-none focus:ring-2 focus:ring-primary/50 min-w-0"
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-bold text-primary group-hover:underline truncate max-w-[180px]">
+      <div className="flex items-center justify-between gap-2 min-w-0">
+        <span className="text-xs font-bold text-primary group-hover:underline truncate min-w-0 flex-1">
           {src.source_name || src.domain || 'Source'}
         </span>
-        <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded ${
+        <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded shrink-0 ${
           src.is_trusted ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'
         }`}>
           {src.is_trusted ? '✓ TRUSTED' : src.trust_tier || 'NEWS'}
         </span>
       </div>
 
-      <p className="text-xs font-semibold text-slate-200 line-clamp-2 leading-snug">{src.title}</p>
+      <p className="text-xs font-semibold text-slate-200 line-clamp-2 leading-snug break-words">{src.title}</p>
       
-      {/* 4-STATE FINDING STATUS BADGE */}
-      <div className={`text-[11px] p-2 rounded-lg border flex items-center gap-2 font-medium ${stateConfig.badgeClass}`}>
-        <StatusIcon className="w-3.5 h-3.5 shrink-0" />
-        <span className="font-bold shrink-0">{stateConfig.label}:</span>
-        <span className="truncate opacity-90">{stateConfig.findingText}</span>
+      {/* 4-STATE FINDING STATUS BADGE (Natural Text Wrapping, 0 String Cuts) */}
+      <div className={`text-[11px] p-2.5 rounded-lg border flex flex-col sm:flex-row sm:items-start gap-1 font-medium leading-relaxed ${stateConfig.badgeClass}`}>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <StatusIcon className="w-3.5 h-3.5 shrink-0" />
+          <span className="font-extrabold shrink-0">{stateConfig.label}:</span>
+        </div>
+        <span className="break-words opacity-95 leading-normal">{stateConfig.findingText}</span>
       </div>
     </a>
   );
