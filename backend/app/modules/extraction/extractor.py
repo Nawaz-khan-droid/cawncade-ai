@@ -24,7 +24,15 @@ class ContentExtractor:
         }
 
     async def extract_from_url(self, url: str) -> dict:
-        result = {"title": "", "text": "", "keywords": "", "success": False, "original_url": url}
+        result = {
+            "title": "",
+            "text": "",
+            "keywords": "",
+            "success": False,
+            "extraction_status": "FAILED",
+            "fallback_used": False,
+            "original_url": url,
+        }
 
         # SSRF Security Guard Check
         from app.services.safe_browsing_service import is_ssrf_safe_url
@@ -35,14 +43,68 @@ class ContentExtractor:
             result["keywords"] = self.extract_keywords_from_url(url)
             return result
 
+        # ── PRIMARY PATH: Jina Reader API ──
+        try:
+            jina_url = f"https://r.jina.ai/{url}"
+            jina_headers = {
+                "User-Agent": self.headers["User-Agent"],
+                "Accept": "text/event-stream, text/plain, */*",
+                "X-No-Cache": "true",
+            }
+            timeout = getattr(settings, "JINA_READER_TIMEOUT", 15)
+
+            async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+                jina_resp = await client.get(jina_url, headers=jina_headers)
+                if jina_resp.status_code == 200:
+                    raw_jina_text = jina_resp.text
+                    cleaned_jina = self._clean_text(raw_jina_text)
+                    
+                    # Quality Gate: Valid article length check (>1,000 chars)
+                    if len(cleaned_jina) >= 1000:
+                        lines = [line.strip() for line in cleaned_jina.split("\n") if line.strip()]
+                        result["title"] = lines[0][:200] if lines else self.extract_keywords_from_url(url)
+                        result["text"] = self._apply_3way_compression(cleaned_jina)
+                        result["keywords"] = self._extract_keywords(result["title"], result["text"])
+                        result["success"] = True
+                        result["extraction_status"] = "SUCCESS"
+                        result["method"] = "jina_reader"
+                        log.info(f"[Extractor] 🚀 Jina Reader SUCCESS: '{result['title'][:60]}' ({len(result['text'])} chars)")
+                        return result
+        except Exception as jina_err:
+            log.info(f"[Extractor] Jina Reader bypassed/failed ({jina_err}). Engaging httpx + BeautifulSoup fallback.")
+
+        # ── SECONDARY FALLBACK PATH: Local httpx + BeautifulSoup ──
+        result["fallback_used"] = True
         try:
             client_kwargs = {"timeout": self.timeout, "follow_redirects": True, "headers": self.headers}
+            max_bytes = getattr(settings, "MAX_RESPONSE_BYTES", 5242880)
 
             async with httpx.AsyncClient(**client_kwargs) as client:
-                response = await client.get(url)
-                response.raise_for_status()
+                async with client.stream("GET", url) as response:
+                    response.raise_for_status()
+                    
+                    # 5MB Response Byte Limit Safeguard
+                    content_length = response.headers.get("Content-Length")
+                    if content_length and int(content_length) > max_bytes:
+                        log.warning(f"[Extractor] Aborted fetching: Content-Length ({content_length}) exceeds 5MB limit.")
+                        result["keywords"] = self.extract_keywords_from_url(url)
+                        result["text"] = "URL response size exceeded 5MB threshold. Web search citations will be used for verification."
+                        return result
 
-            soup = BeautifulSoup(response.text, "lxml")
+                    chunks = []
+                    downloaded = 0
+                    async for chunk in response.aiter_bytes():
+                        downloaded += len(chunk)
+                        if downloaded > max_bytes:
+                            log.warning(f"[Extractor] Aborted fetching: Download size exceeded 5MB cap.")
+                            result["keywords"] = self.extract_keywords_from_url(url)
+                            result["text"] = "URL response body exceeded 5MB limit. Web search citations will be used for verification."
+                            return result
+                        chunks.append(chunk)
+
+                    html_content = b"".join(chunks).decode("utf-8", errors="ignore")
+
+            soup = BeautifulSoup(html_content, "lxml")
 
             title = (
                 (soup.find("meta", property="og:title") and soup.find("meta", property="og:title").get("content", ""))
@@ -64,28 +126,14 @@ class ContentExtractor:
                     tag.decompose()
                 text = article_tag.get_text(separator=" ", strip=True)
                 cleaned_text = self._clean_text(text)
-
-                # 3-Way Intelligent 10,000 Character Evidence Preservation (First 3,000 + Middle 4,000 + Last 3,000 chars)
-                max_article_chars = getattr(settings, "MAX_ARTICLE_CHARS", 10000)
-                if len(cleaned_text) > max_article_chars:
-                    first_part = cleaned_text[:3000]
-                    mid_start = max(0, (len(cleaned_text) // 2) - 2000)
-                    middle_part = cleaned_text[mid_start:mid_start + 4000]
-                    last_part = cleaned_text[-3000:]
-                    result["text"] = (
-                        f"{first_part}\n\n"
-                        f"[... Intro Truncated for Evidence Preservation ({mid_start} chars prior) ...]\n\n"
-                        f"{middle_part}\n\n"
-                        f"[... Middle Section Truncated for Conclusion Preservation ...]\n\n"
-                        f"{last_part}"
-                    )
-                else:
-                    result["text"] = cleaned_text
+                result["text"] = self._apply_3way_compression(cleaned_text)
 
             result["keywords"] = self._extract_keywords(result["title"], result["text"])
             if result["title"] or result["keywords"]:
                 result["success"] = True
-                log.info(f"[Extractor] Extracted: '{result['title'][:80]}'")
+                result["extraction_status"] = "SUCCESS"
+                result["method"] = "beautifulsoup_fallback"
+                log.info(f"[Extractor] BeautifulSoup Fallback SUCCESS: '{result['title'][:60]}'")
             else:
                 log.warning(f"[Extractor] No content found at {url}")
                 result["text"] = "Unable to extract main article text due to access restrictions or client-side rendering. Web search citations will be used for verification."
@@ -110,6 +158,23 @@ class ContentExtractor:
                 result["success"] = True
 
         return result
+
+    def _apply_3way_compression(self, cleaned_text: str) -> str:
+        """Applies 3-way intelligent evidence compression (First 3k + Middle 4k + Last 3k chars)."""
+        max_article_chars = getattr(settings, "MAX_ARTICLE_CHARS", 10000)
+        if len(cleaned_text) > max_article_chars:
+            first_part = cleaned_text[:3000]
+            mid_start = max(0, (len(cleaned_text) // 2) - 2000)
+            middle_part = cleaned_text[mid_start:mid_start + 4000]
+            last_part = cleaned_text[-3000:]
+            return (
+                f"{first_part}\n\n"
+                f"[... Intro Truncated for Evidence Preservation ({mid_start} chars prior) ...]\n\n"
+                f"{middle_part}\n\n"
+                f"[... Middle Section Truncated for Conclusion Preservation ...]\n\n"
+                f"{last_part}"
+            )
+        return cleaned_text
 
     def extract_keywords(self, text: str, top_n: int = 10) -> list:
         from sklearn.feature_extraction.text import TfidfVectorizer

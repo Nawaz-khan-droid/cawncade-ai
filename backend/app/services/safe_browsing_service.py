@@ -17,11 +17,14 @@ from app.utils.logger import log
 settings = get_settings()
 
 
-def is_ssrf_safe_url(url: str) -> tuple[bool, str]:
+def is_ssrf_safe_url(url: str, allow_dev_override: bool = True) -> tuple[bool, str]:
     """
     Validates URL to block Server-Side Request Forgery (SSRF) attacks.
-    Blocks: localhost, private IP ranges (10.x, 172.16-31.x, 192.168.x, 127.x),
-    AWS/GCP metadata endpoints (169.254.x.x), internal hostnames, and non-http(s) schemes.
+    1. Parses scheme (HTTP/HTTPS only).
+    2. Validates hostname string.
+    3. Performs explicit IPv4 & IPv6 DNS resolution via socket.getaddrinfo().
+    4. Checks resolved IP against private, loopback, link-local, multicast, & reserved subnets.
+    5. Environment-Aware: Logs warning in development mode if override allowed, enforces hard block in production.
     """
     try:
         parsed = urlparse(url.strip())
@@ -34,15 +37,25 @@ def is_ssrf_safe_url(url: str) -> tuple[bool, str]:
 
         lower_host = hostname.lower()
         if lower_host in ("localhost", "0.0.0.0", "127.0.0.1", "::1") or lower_host.endswith(".local") or lower_host.endswith(".internal"):
+            if settings.ENVIRONMENT == "development" and allow_dev_override:
+                log.warning(f"[SSRF Guard] Dev Mode Warning: Local hostname '{hostname}' permitted for testing.")
+                return True, "Dev Mode Warning: Local hostname permitted."
             return False, "Security Block: Access to local or internal network hostnames is prohibited."
 
+        # Perform explicit IPv4 & IPv6 DNS resolution
         try:
-            ip_str = socket.gethostbyname(hostname)
-            ip = ipaddress.ip_address(ip_str)
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
-                return False, f"Security Block: Target IP address {ip_str} is within a restricted private/internal subnet."
-        except Exception:
-            return False, "Security Block: Hostname DNS resolution failed."
+            addr_info = socket.getaddrinfo(hostname, None)
+            resolved_ips = {item[4][0] for item in addr_info}
+            
+            for ip_str in resolved_ips:
+                ip = ipaddress.ip_address(ip_str)
+                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
+                    if settings.ENVIRONMENT == "development" and allow_dev_override:
+                        log.warning(f"[SSRF Guard] Dev Mode Warning: Private IP '{ip_str}' permitted for testing.")
+                        return True, f"Dev Mode Warning: Private IP {ip_str} permitted."
+                    return False, f"Security Block: Target IP address {ip_str} is within a restricted private/internal subnet."
+        except Exception as dns_err:
+            return False, f"Security Block: Hostname DNS resolution failed ({str(dns_err)})."
 
         return True, ""
     except Exception as e:

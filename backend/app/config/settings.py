@@ -93,6 +93,8 @@ class Settings(BaseSettings):
     MAX_CLAIM_CHARS: int = 5000
     MAX_ARTICLE_CHARS: int = 10000
     MAX_URLS_PER_REQUEST: int = 3
+    MAX_RESPONSE_BYTES: int = 5242880      # 5MB response size cap
+    JINA_READER_TIMEOUT: int = 15          # 15 seconds
     RSS_FEED_TIMEOUT: int = 20
     WEB_FETCH_TIMEOUT: int = 15
     SEARCH_CACHE_TTL: int = 21600          # 6 hours
