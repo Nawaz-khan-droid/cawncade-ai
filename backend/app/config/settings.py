@@ -87,9 +87,12 @@ class Settings(BaseSettings):
     # ── GDELT (Free, no key required) ──
     GDELT_BASE_URL: str = "https://api.gdeltproject.org/api/v2"
 
-    # ── Retrieval ──
+    # ── Retrieval & Character Limits ──
     MAX_SOURCES_PER_QUERY: int = 10
     MIN_SOURCES_FOR_VERIFICATION: int = 3
+    MAX_CLAIM_CHARS: int = 5000
+    MAX_ARTICLE_CHARS: int = 10000
+    MAX_URLS_PER_REQUEST: int = 3
     RSS_FEED_TIMEOUT: int = 20
     WEB_FETCH_TIMEOUT: int = 15
     SEARCH_CACHE_TTL: int = 21600          # 6 hours

@@ -54,7 +54,17 @@ class ContentExtractor:
                 for tag in article_tag.find_all(["script", "style", "nav", "footer", "aside", "header"]):
                     tag.decompose()
                 text = article_tag.get_text(separator=" ", strip=True)
-                result["text"] = self._clean_text(text)
+                cleaned_text = self._clean_text(text)
+
+                # Intelligent 10,000 character truncation (First 4.5k + Last 4.5k chars)
+                max_article_chars = getattr(settings, "MAX_ARTICLE_CHARS", 10000)
+                if len(cleaned_text) > max_article_chars:
+                    half_limit = (max_article_chars - 500) // 2
+                    first_part = cleaned_text[:half_limit]
+                    last_part = cleaned_text[-half_limit:]
+                    result["text"] = f"{first_part}\n\n[... Content Truncated for Token Efficiency ({len(cleaned_text)} chars total) ...]\n\n{last_part}"
+                else:
+                    result["text"] = cleaned_text
 
             result["keywords"] = self._extract_keywords(result["title"], result["text"])
             if result["title"] or result["keywords"]:

@@ -140,12 +140,18 @@ export default function VisualLens() {
 
         {/* User Query Input */}
         <div className="flex flex-col gap-2 pt-3 border-t border-borderBase-light dark:border-borderBase-dark">
-          <label className="text-xs font-bold uppercase tracking-wider flex items-center gap-2 text-textMain-light dark:text-textMain-dark">
-            <span className="text-primary font-bold">?</span> Context / Query (Optional)
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold uppercase tracking-wider flex items-center gap-2 text-textMain-light dark:text-textMain-dark">
+              <span className="text-primary font-bold">?</span> Context / Query (Optional)
+            </label>
+            <span className="text-[11px] font-mono text-slate-400">
+              {userQuery.length.toLocaleString()} / 5,000
+            </span>
+          </div>
           <textarea 
             value={userQuery}
             onChange={(e) => setUserQuery(e.target.value)}
+            maxLength={5000}
             placeholder="E.g., Did the speaker actually claim that the economy crashed in this video?" 
             className="w-full bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-xl px-3.5 py-2.5 text-sm text-textMain-light dark:text-textMain-dark placeholder-textMuted-light/50 dark:placeholder-textMuted-dark/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all resize-none min-h-[70px]"
           />

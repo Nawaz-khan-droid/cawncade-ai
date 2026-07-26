@@ -81,15 +81,27 @@ export default function ContextLens() {
         
         {/* Text Input */}
         <div className="flex flex-col gap-2">
-          <label className="text-xs font-bold uppercase tracking-wider flex items-center gap-2 text-textMain-light dark:text-textMain-dark">
-            <Search className="w-3.5 h-3.5 text-primary" />
-            Claim or Text Segment
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold uppercase tracking-wider flex items-center gap-2 text-textMain-light dark:text-textMain-dark">
+              <Search className="w-3.5 h-3.5 text-primary" />
+              Claim or Text Segment
+            </label>
+            <span className={`text-[11px] font-mono transition-colors ${
+              text.length >= 4750 
+                ? 'text-rose-400 font-bold' 
+                : text.length >= 4000 
+                ? 'text-amber-400 font-bold' 
+                : 'text-slate-400'
+            }`}>
+              {text.length.toLocaleString()} / 5,000
+            </span>
+          </div>
           <textarea 
             value={text}
             onChange={(e) => { setText(e.target.value); setUrl(''); }}
             disabled={isLoading}
-            placeholder="Paste a suspicious claim, news excerpt, or social media post for context analysis..." 
+            maxLength={5000}
+            placeholder="Paste a suspicious claim, news excerpt, or social media post for context analysis (up to 5,000 characters)..." 
             className="w-full bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-xl p-3.5 text-textMain-light dark:text-textMain-dark placeholder-textMuted-light/50 dark:placeholder-textMuted-dark/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all resize-none min-h-[100px] text-sm disabled:opacity-50"
           />
         </div>
