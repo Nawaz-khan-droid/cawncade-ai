@@ -36,7 +36,7 @@ class SemanticFactCache:
                 index = faiss.read_index(INDEX_FILE)
                 with open(METADATA_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                log.info(f"[CacheService] 🔋 Restored {index.ntotal} cached claims from persistent disk storage.")
+                log.info(f"[CacheService] [RESTORED] Restored {index.ntotal} cached claims from persistent disk storage.")
                 return index, data.get("claims", []), data.get("verdicts", [])
             except Exception as e:
                 log.error(f"[CacheService] Error reading backup files: {e}. Starting fresh.")
@@ -53,7 +53,7 @@ class SemanticFactCache:
             # Write text payloads
             with open(METADATA_FILE, "w", encoding="utf-8") as f:
                 json.dump({"claims": self.cached_claims, "verdicts": self.cached_verdicts}, f)
-            log.info("[CacheService] 💾 Vector cache saved successfully to local persistent storage.")
+            log.info("[CacheService] [SAVED] Vector cache saved successfully to local persistent storage.")
         except Exception as e:
             log.error(f"[CacheService] Failed to back up cache components: {e}")
 
@@ -75,14 +75,14 @@ class SemanticFactCache:
             
             # 3. If similarity exceeds the threshold, return the cached answer
             if best_idx != -1 and best_score >= similarity_threshold:
-                log.info(f"[CacheService] 🔥 Cache Hit! Semantic Similarity Match: {best_score:.2f}")
+                log.info(f"[CacheService] [CACHE HIT] Semantic Similarity Match: {best_score:.2f}")
                 return {
                     "verdict": self.cached_verdicts[best_idx],
                     "matched_claim": self.cached_claims[best_idx],
                     "score": float(best_score)
                 }
             
-            log.info(f"[CacheService] ❄️ Cache Miss. Max match score was: {best_score if best_idx != -1 else 0.0:.2f}")
+            log.info(f"[CacheService] [CACHE MISS] Max match score was: {best_score if best_idx != -1 else 0.0:.2f}")
         except Exception as e:
             log.error(f"[CacheService] Lookup error: {e}")
             

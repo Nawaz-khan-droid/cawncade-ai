@@ -25,6 +25,12 @@ def setup_logger(name: str = "cawncade", level: str = None) -> logging.Logger:
         fmt="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+    # Ensure sys.stdout handles UTF-8 encoding safely on Windows
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
+        except Exception:
+            pass
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(formatter)
 

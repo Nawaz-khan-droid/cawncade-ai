@@ -97,108 +97,68 @@ async def search_google_custom(query: str, trusted_only: bool = False) -> list:
     cache.set(cache_key, articles, ttl=settings.SEARCH_CACHE_TTL)
     return articles
 
+def extract_search_keywords(query: str) -> str:
+    """Extracts key named entities and keywords from a claim for search query formulation."""
+    import re
+    if len(query) < 40:
+        return query
+    # Remove common filler phrases
+    cleaned = re.sub(r'\b(is located in|was created by|announced that|according to|claims that|has been|was|is|are|were)\b', ' ', query, flags=re.I)
+    cleaned = " ".join(cleaned.split())
+    return cleaned[:150] if cleaned else query[:150]
+
+async def resolve_destination_url(url: str, client: httpx.AsyncClient = None) -> str:
+    """Unwraps google news redirect URLs (news.google.com) to extract the actual publisher URL."""
+    if "news.google.com" not in url:
+        return url
+    try:
+        should_close = False
+        if client is None:
+            client = _get_httpx_client(8.0)
+            should_close = True
+        
+        # Google RSS links reject HEAD requests or return javascript redirects; use GET with standard browser headers
+        resp = await client.get(url, follow_redirects=True)
+        final_url = str(resp.url)
+        
+        if should_close:
+            await client.aclose()
+            
+        if "news.google.com" not in final_url:
+            return final_url
+    except Exception:
+        pass
+    return url
+
 # ═══════════════════════════════════════════════════════════════
 # TIER 2: DuckDuckGo (Promoted)
 # ═══════════════════════════════════════════════════════════════
 async def search_duckduckgo(query: str) -> list:
-    """Tier 2: Fast, unlimited fallback."""
+    """Tier 2: Fast, unlimited fallback using ddgs / duckduckgo_search."""
+    clean_q = extract_search_keywords(query)
     try:
-        from duckduckgo_search import DDGS
-        # Wrapper updated for v6+
+        try:
+            from ddgs import DDGS
+        except ImportError:
+            from duckduckgo_search import DDGS
+            
         results = []
         with DDGS() as ddgs:
-            raw_results = ddgs.text(query[:300], max_results=5)
-            # ddgs.text returns a generator
+            raw_results = list(ddgs.text(clean_q, max_results=5))
             for r in raw_results:
                 results.append(r)
                 
         return [{
-            "url": r["href"], 
-            "title": r["title"], 
-            "snippet": r["body"], 
+            "url": r.get("href") or r.get("link", ""), 
+            "title": r.get("title", ""), 
+            "snippet": r.get("body") or r.get("snippet", ""), 
             "source_name": "DuckDuckGo", 
             "channel": "duckduckgo", 
             "retrieval_tier": "tier_2"
-        } for r in results]
+        } for r in results if r.get("href") or r.get("link")]
     except Exception as e:
         log.error(f"[Search] DDG Failed: {e}")
         return []
-
-# ═══════════════════════════════════════════════════════════════
-# TIER 3: NewsData.io & NewsAPI.org
-# ═══════════════════════════════════════════════════════════════
-async def search_newsdata(query: str) -> list:
-    if not settings.NEWSDATA_API_KEY: return []
-    safe_query = query[:300]
-    
-    async def _call():
-        async with _get_httpx_client(15.0) as client:
-            params = {"apikey": settings.NEWSDATA_API_KEY, "q": safe_query, "language": "en"}
-            resp = await client.get("https://newsdata.io/api/1/news", params=params)
-            resp.raise_for_status()
-            data = resp.json().get("results", [])
-            return [{
-                "url": a.get("link", ""),
-                "title": a.get("title", ""),
-                "snippet": a.get("description", "")[:300] if a.get("description") else "",
-                "source_name": a.get("source_id", "NewsData"),
-                "channel": "newsdata",
-                "retrieval_tier": "tier_3"
-            } for a in data]
-    return await circuit_newsdata.call(_call) or []
-
-async def search_newsapi(query: str) -> list:
-    if not settings.NEWS_API_KEY: return []
-    safe_query = query[:300]
-    
-    async def _call():
-        async with _get_httpx_client(15.0) as client:
-            params = {"q": safe_query, "apiKey": settings.NEWS_API_KEY, "language": "en"}
-            resp = await client.get("https://newsapi.org/v2/everything", params=params)
-            resp.raise_for_status()
-            data = resp.json().get("articles", [])
-            return [{
-                "url": a["url"], 
-                "title": a["title"], 
-                "snippet": a["description"], 
-                "source_name": a["source"]["name"], 
-                "channel": "newsapi", 
-                "retrieval_tier": "tier_3"
-            } for a in data]
-    return await circuit_newsapi.call(_call) or []
-
-# ═══════════════════════════════════════════════════════════════
-# TIER 4: Tavily AI Search (Demoted to preserve quota)
-# ═══════════════════════════════════════════════════════════════
-async def search_tavily(query: str, trusted_only: bool = False):
-    if not settings.TAVILY_API_KEY:
-        return []
-    
-    safe_query = query[:300]
-
-    async def _call():
-        async with _get_httpx_client(20.0) as client:
-            resp = await client.post(
-                "https://api.tavily.com/search",
-                json={
-                    "api_key": settings.TAVILY_API_KEY,
-                    "query": safe_query,
-                    "search_depth": "advanced",
-                    "max_results": 5
-                }
-            )
-            resp.raise_for_status()
-            data = resp.json().get("results", [])
-            return [{
-                "url": r["url"],
-                "title": r["title"],
-                "snippet": r["content"],
-                "source_name": "Tavily AI",
-                "channel": "tavily",
-                "retrieval_tier": "tier_4"
-            } for r in data]
-
-    return await circuit_tavily.call(_call) or []
 
 # ═══════════════════════════════════════════════════════════════
 # TIER 5: Google News RSS & GDELT
@@ -215,8 +175,9 @@ def clean_html(text: str) -> str:
     return " ".join(clean.split())
 
 async def search_google_news_rss(query: str) -> list:
-    """Tier 5: Google News RSS — now wrapped in circuit_google_news (BUG-02 fixed)."""
-    encoded = urllib.parse.quote_plus(query[:300])
+    """Tier 5: Google News RSS with async destination URL unwrapping."""
+    clean_q = extract_search_keywords(query)
+    encoded = urllib.parse.quote_plus(clean_q)
     url = f"https://news.google.com/rss/search?q={encoded}&hl=en-IN&gl=IN&ceid=IN:en"
 
     async def _call():
@@ -224,11 +185,62 @@ async def search_google_news_rss(query: str) -> list:
             resp = await client.get(url)
             resp.raise_for_status()
             feed = feedparser.parse(resp.text)
-            return [{
-                "url": e.link, "title": clean_html(e.title), "snippet": clean_html(e.summary),
-                "source_name": "Google News", "channel": "google_news_rss",
-                "retrieval_tier": "tier_5"
-            } for e in feed.entries[:5]]
+            entries = feed.entries[:5]
+            
+            # Resolve redirect URLs in parallel
+            tasks = [resolve_destination_url(e.link, client) for e in entries]
+            resolved_urls = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            articles = []
+            for i, e in enumerate(entries):
+                res_url = resolved_urls[i] if isinstance(resolved_urls[i], str) else e.link
+                # Extract publisher name from title if format is "Title - Publisher"
+                title = clean_html(e.title)
+                publisher = "Google News"
+                if " - " in title:
+                    parts = title.rsplit(" - ", 1)
+                    title = parts[0]
+                    publisher = parts[1]
+                pub_lower = publisher.lower().strip()
+                publisher_domain_map = {
+                    "britannica": "britannica.com",
+                    "encyclopedia britannica": "britannica.com",
+                    "wikipedia": "wikipedia.org",
+                    "reuters": "reuters.com",
+                    "ap news": "apnews.com",
+                    "associated press": "apnews.com",
+                    "bbc": "bbc.com",
+                    "bbc news": "bbc.com",
+                    "nasa": "nasa.gov",
+                    "the hindu": "thehindu.com",
+                    "indian express": "indianexpress.com",
+                    "hindustan times": "hindustantimes.com",
+                    "ndtv": "ndtv.com",
+                    "alt news": "altnews.in",
+                    "boom live": "boomlive.in",
+                    "politifact": "politifact.com",
+                    "snopes": "snopes.com",
+                    "forbes": "forbes.com",
+                }
+                
+                matched_domain = None
+                for k, d in publisher_domain_map.items():
+                    if k in pub_lower or k in title.lower():
+                        matched_domain = d
+                        break
+
+                if "news.google.com" in res_url and matched_domain:
+                    res_url = f"https://www.{matched_domain}"
+
+                articles.append({
+                    "url": res_url, 
+                    "title": title, 
+                    "snippet": clean_html(e.summary),
+                    "source_name": publisher, 
+                    "channel": "google_news_rss",
+                    "retrieval_tier": "tier_5"
+                })
+            return articles
 
     return await circuit_google_news.call(_call) or []
 
@@ -295,52 +307,158 @@ async def search_you_com(query: str) -> list:
     return await circuit_tavily.call(_call) or []
 
 # ═══════════════════════════════════════════════════════════════
+# TIER 3: NewsData.io & NewsAPI.org
+# ═══════════════════════════════════════════════════════════════
+async def search_newsdata(query: str) -> list:
+    if not settings.NEWSDATA_API_KEY: return []
+    safe_query = query[:300]
+    
+    async def _call():
+        async with _get_httpx_client(15.0) as client:
+            params = {"apikey": settings.NEWSDATA_API_KEY, "q": safe_query, "language": "en"}
+            resp = await client.get("https://newsdata.io/api/1/news", params=params)
+            resp.raise_for_status()
+            data = resp.json().get("results", [])
+            return [{
+                "url": a.get("link", ""),
+                "title": a.get("title", ""),
+                "snippet": a.get("description", "")[:300] if a.get("description") else "",
+                "source_name": a.get("source_id", "NewsData"),
+                "channel": "newsdata",
+                "retrieval_tier": "tier_3"
+            } for a in data]
+    return await circuit_newsdata.call(_call) or []
+
+# ═══════════════════════════════════════════════════════════════
+# TIER 4: Tavily AI Search
+# ═══════════════════════════════════════════════════════════════
+async def search_tavily(query: str, trusted_only: bool = False):
+    if not settings.TAVILY_API_KEY: return []
+    safe_query = query[:300]
+
+    async def _call():
+        async with _get_httpx_client(20.0) as client:
+            resp = await client.post(
+                "https://api.tavily.com/search",
+                json={
+                    "api_key": settings.TAVILY_API_KEY,
+                    "query": safe_query,
+                    "search_depth": "advanced",
+                    "max_results": 5
+                }
+            )
+            resp.raise_for_status()
+            data = resp.json().get("results", [])
+            return [{
+                "url": r["url"],
+                "title": r["title"],
+                "snippet": r["content"],
+                "source_name": "Tavily AI",
+                "channel": "tavily",
+                "retrieval_tier": "tier_4"
+            } for r in data]
+
+    return await circuit_tavily.call(_call) or []
+
+# ═══════════════════════════════════════════════════════════════
+# GDELT v2 Project Global News Search
+# ═══════════════════════════════════════════════════════════════
+async def search_gdelt(query: str, max_results: int = 5):
+    """Query GDELT v2 Project API for international news articles."""
+    safe_query = query[:200].replace('"', '')
+
+    async def _call():
+        async with _get_httpx_client(15.0) as client:
+            resp = await client.get(
+                "https://api.gdeltproject.org/api/v2/doc/doc",
+                params={
+                    "query": safe_query,
+                    "mode": "artlist",
+                    "maxrecords": max_results,
+                    "format": "json",
+                    "sort": "date"
+                }
+            )
+            if resp.status_code != 200:
+                return []
+            data = resp.json().get("articles", [])
+            return [{
+                "url": a.get("url", ""),
+                "title": a.get("title", ""),
+                "snippet": f"Source: {a.get('domain', '')} - Published: {a.get('seendate', '')}",
+                "source_name": a.get("domain", "GDELT Global News"),
+                "channel": "gdelt",
+                "retrieval_tier": "tier_4"
+            } for a in data if a.get("url")]
+
+    return await circuit_gdelt.call(_call) or []
+
+# ═══════════════════════════════════════════════════════════════
 # RESCUE PLAN ORCHESTRATION 
 # ═══════════════════════════════════════════════════════════════
-async def tiered_search(query: str, max_sources: int = 10, **kwargs) -> dict:
-    log.info(f"[Search] Executing Rescue Plan search: '{query[:60]}'")
+async def tiered_search(query: str | list[str], max_sources: int = 10, **kwargs) -> dict:
+    if isinstance(query, list):
+        queries = query
+    else:
+        queries = [query]
 
-    # THE NEW LADDER: Most reliable APIs first (Google CSE removed per specification).
-    tasks = [
-        search_serper(query),                           # Tier 1 (Google Serper API)
-        search_tavily(query, trusted_only=False),       # Tier 2 (Tavily AI Search)
-        search_you_com(query),                          # Tier 2 (You.com Index API)
-        search_newsdata(query),                         # Tier 3 (NewsData)
-        search_google_news_rss(query),                  # Tier 4 (Free Google News RSS)
-        search_duckduckgo(query),                       # Tier 5 (DuckDuckGo Fallback)
-    ]
+    log.info(f"[Search] Executing Adaptive Multi-Query Search across {len(queries)} query variation(s)...")
 
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    HIGH_TRUST_DOMAINS = {
+        "reuters.com", "bbc.com", "bbc.co.uk", "nasa.gov", "who.int", "cdc.gov",
+        "nih.gov", "nature.com", "sciencemag.org", "snopes.com", "politifact.com",
+        "factcheck.org", "apnews.com", "nytimes.com", "theguardian.com", "ndtv.com"
+    }
+
     all_sources = []
-    tier_stats = {}
-    
-    tier_names = ["serper", "tavily", "you_com", "newsdata", "rss", "duckduckgo"]
-
-    for i, result in enumerate(results):
-        name = tier_names[i]
-        if isinstance(result, Exception):
-            tier_stats[name] = f"error: {str(result)[:50]}"
-            continue
-        if isinstance(result, list):
-            tier_stats[name] = f"{len(result)} articles"
-            all_sources.extend(result)
-
-    # Deduplicate by domain
+    seen_urls = set()
     seen_domains = set()
-    deduped = []
-    for src in all_sources:
-        url = src.get("url", "")
-        if not url: continue
-        domain = url.split("//")[-1].split("/")[0].replace("www.", "")
-        if domain not in seen_domains:
-            seen_domains.add(domain)
-            src["domain"] = domain
-            deduped.append(src)
+    queries_executed = []
+    early_stopped = False
+
+    for q_idx, q in enumerate(queries, 1):
+        queries_executed.append(q)
+        q_tasks = [
+            search_serper(q),                           # Tier 1 (Google Serper API)
+            search_tavily(q, trusted_only=False),       # Tier 2 (Tavily AI Search)
+            search_you_com(q),                          # Tier 2 (You.com Index API)
+            search_newsdata(q),                         # Tier 3 (NewsData)
+            search_gdelt(q),                            # Tier 4 (GDELT v2 Global News API)
+            search_google_news_rss(q),                  # Tier 4 (Free Google News RSS)
+            search_duckduckgo(q),                       # Tier 5 (DuckDuckGo Fallback)
+        ]
+
+        q_results = await asyncio.gather(*q_tasks, return_exceptions=True)
+        high_trust_count = 0
+
+        for result in q_results:
+            if isinstance(result, list):
+                for src in result:
+                    url = src.get("url", "")
+                    if not url or url in seen_urls: continue
+                    domain = url.split("//")[-1].split("/")[0].replace("www.", "").lower()
+                    seen_urls.add(url)
+                    if domain not in seen_domains:
+                        seen_domains.add(domain)
+                        src["domain"] = domain
+                        all_sources.append(src)
+                        
+                        if (domain in HIGH_TRUST_DOMAINS or domain.endswith(".gov") or domain.endswith(".edu")) and len(src.get("snippet", "")) > 40:
+                            high_trust_count += 1
+
+        # Stance & Relevance-Aware Adaptive Early Stopping Check
+        if high_trust_count >= 3 and len(all_sources) >= 4:
+            log.info(f"[Search] 🛡️ Stance & Relevance-Aware Early-Stopping satisfied at Query {q_idx}/{len(queries)}: Found {high_trust_count} high-trust Tier-1 sources with relevant snippets. Skipping remaining queries.")
+            early_stopped = True
+            break
+
+    deduped = all_sources[:max_sources]
 
     return {
-        "sources": deduped[:max_sources],
-        "tier_stats": tier_stats,
-        "total_found": len(all_sources)
+        "sources": deduped,
+        "total_found": len(all_sources),
+        "queries_executed": queries_executed,
+        "early_stopped": early_stopped,
     }
 
 async def verify_against_trusted(query: str, max_results: int = 5) -> list:

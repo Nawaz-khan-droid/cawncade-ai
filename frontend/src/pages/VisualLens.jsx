@@ -199,24 +199,30 @@ export default function VisualLens() {
                   <span className="text-xs font-extrabold uppercase tracking-widest text-slate-400">Forensic Indicators & Metadata</span>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 text-xs">
-                  <div className="p-3 rounded-xl bg-white/5 border border-white/5 flex flex-col gap-1">
-                    <span className="text-[10px] uppercase font-bold text-slate-400">Match Score</span>
-                    <span className="text-base font-bold text-emerald-400">{Math.round((result.confidence || 0) * 100)}%</span>
+                {image ? (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 text-xs">
+                    <div className="p-3 rounded-xl bg-white/5 border border-white/5 flex flex-col gap-1">
+                      <span className="text-[10px] uppercase font-bold text-slate-400">Match Score</span>
+                      <span className="text-base font-bold text-emerald-400">{Math.round((result.confidence || 0) * 100)}%</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-white/5 border border-white/5 flex flex-col gap-1">
+                      <span className="text-[10px] uppercase font-bold text-slate-400">Format</span>
+                      <span className="text-sm font-semibold text-slate-200">{result.metadata?.format || 'PNG / JPG'}</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-white/5 border border-white/5 flex flex-col gap-1">
+                      <span className="text-[10px] uppercase font-bold text-slate-400">Dimensions</span>
+                      <span className="text-sm font-semibold text-slate-200">{result.metadata?.size || 'Auto-Detected'}</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-white/5 border border-white/5 flex flex-col gap-1">
+                      <span className="text-[10px] uppercase font-bold text-slate-400">Analysis Mode</span>
+                      <span className="text-sm font-semibold text-slate-200">{result.metadata?.mode || 'RGB'}</span>
+                    </div>
                   </div>
-                  <div className="p-3 rounded-xl bg-white/5 border border-white/5 flex flex-col gap-1">
-                    <span className="text-[10px] uppercase font-bold text-slate-400">Format</span>
-                    <span className="text-sm font-semibold text-slate-200">{result.metadata?.format || 'IMAGE/JPEG'}</span>
+                ) : (
+                  <div className="p-3.5 rounded-xl bg-white/5 border border-white/5 text-xs text-slate-400 italic">
+                    ℹ️ No image file was uploaded for this analysis. Forensic metadata analysis is omitted for text and video-only inputs.
                   </div>
-                  <div className="p-3 rounded-xl bg-white/5 border border-white/5 flex flex-col gap-1">
-                    <span className="text-[10px] uppercase font-bold text-slate-400">Dimensions</span>
-                    <span className="text-sm font-semibold text-slate-200">{result.metadata?.size || '1920x1080'}</span>
-                  </div>
-                  <div className="p-3 rounded-xl bg-white/5 border border-white/5 flex flex-col gap-1">
-                    <span className="text-[10px] uppercase font-bold text-slate-400">Analysis Mode</span>
-                    <span className="text-sm font-semibold text-slate-200">{result.metadata?.mode || 'RGB'}</span>
-                  </div>
-                </div>
+                )}
               </div>
 
               {/* 4. SOURCES & EVIDENCE MATCHES */}

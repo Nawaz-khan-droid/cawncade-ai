@@ -5,7 +5,7 @@ from .models import Base
 
 
 def get_engine(database_url: str | None = None):
-    url = database_url or os.getenv("DATABASE_URL", "sqlite:////data/cawncade.db")
+    url = database_url or os.getenv("DATABASE_URL", "sqlite:///./db/cawncade.db")
     if url.startswith("sqlite"):
         connect_args = {"check_same_thread": False}
     else:
@@ -15,16 +15,19 @@ def get_engine(database_url: str | None = None):
 
 
 def init_db(engine=None):
-    """Create all tables. Call once at startup. Creates /data directory if needed."""
+    """Create all tables. Call once at startup. Creates database directory if needed."""
     if engine is None:
         engine = get_engine()
 
-    # Ensure /data directory exists (for HF Persistent Storage)
-    db_path = os.getenv("DATABASE_URL", "sqlite:////data/cawncade.db")
+    db_path = os.getenv("DATABASE_URL", "sqlite:///./db/cawncade.db")
     if "sqlite" in db_path:
         db_file = db_path.split("///")[-1]
         db_dir = os.path.dirname(db_file)
-        os.makedirs(db_dir, exist_ok=True)
+        if db_dir:
+            try:
+                os.makedirs(db_dir, exist_ok=True)
+            except Exception:
+                pass
 
     Base.metadata.create_all(bind=engine)
     return engine

@@ -204,50 +204,98 @@ export default function ContextLens() {
                 <EmptyState />
               )}
 
-              {/* 5. ADVANCED VERIFICATION DETAILS (COLLAPSED ACCORDION) */}
+              {/* 5. PROGRESSIVE DISCLOSURE ACCORDIONS */}
+              
+              {/* ACCORDION 1: WHY THIS VERDICT? (EXPLAINABILITY & CONFLICT BREAKDOWN) */}
+              <details className="mt-1 pt-3 border-t border-borderBase-light dark:border-borderBase-dark group" open>
+                <summary className="cursor-pointer text-xs font-extrabold uppercase tracking-wider text-primary hover:underline flex items-center justify-between select-none">
+                  <span>▼ Why This Verdict? (Explainability & Signals)</span>
+                  <span className="text-[10px] text-slate-400 font-normal">Evidence-Derived</span>
+                </summary>
+                
+                <div className="flex flex-col gap-3.5 mt-3 p-4 rounded-xl bg-surface-light/50 dark:bg-surface-dark/50 border border-borderBase-light dark:border-borderBase-dark">
+                  {/* EVIDENCE CONFLICT BAR */}
+                  {result.conflict_breakdown && (
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex justify-between text-xs font-bold text-slate-300">
+                        <span>Evidence Agreement Breakdown</span>
+                        <span className="text-emerald-400">
+                          {result.conflict_breakdown.supporting} Supporting / {result.conflict_breakdown.contradicting} Contradicting
+                        </span>
+                      </div>
+                      <div className="h-2.5 w-full bg-slate-800 rounded-full overflow-hidden flex">
+                        <div 
+                          className="bg-emerald-500 h-full transition-all duration-500" 
+                          style={{ width: `${(result.conflict_breakdown.supporting / Math.max(1, (result.conflict_breakdown.supporting + result.conflict_breakdown.contradicting + result.conflict_breakdown.neutral))) * 100}%` }}
+                        />
+                        <div 
+                          className="bg-rose-500 h-full transition-all duration-500" 
+                          style={{ width: `${(result.conflict_breakdown.contradicting / Math.max(1, (result.conflict_breakdown.supporting + result.conflict_breakdown.contradicting + result.conflict_breakdown.neutral))) * 100}%` }}
+                        />
+                        <div 
+                          className="bg-slate-600 h-full transition-all duration-500" 
+                          style={{ width: `${(result.conflict_breakdown.neutral / Math.max(1, (result.conflict_breakdown.supporting + result.conflict_breakdown.contradicting + result.conflict_breakdown.neutral))) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* SIGNALS GRID */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 mt-1">
+                    <div className="p-3 rounded-lg bg-black/20 border border-white/5 flex flex-col gap-1">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Entity Overlap</span>
+                      <span className="text-sm font-extrabold text-emerald-400">
+                        {Math.round((result.explainability?.entity_alignment?.score || 0) * 100)}% Matched
+                      </span>
+                    </div>
+                    <div className="p-3 rounded-lg bg-black/20 border border-white/5 flex flex-col gap-1">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">High-Trust Tier 1</span>
+                      <span className="text-sm font-extrabold text-sky-400">
+                        {result.explainability?.source_quality?.tier1_sources || 0} / {result.explainability?.source_quality?.total_sources || 0} Outlets
+                      </span>
+                    </div>
+                    <div className="p-3 rounded-lg bg-black/20 border border-white/5 flex flex-col gap-1">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Timeline Alignment</span>
+                      <span className="text-sm font-extrabold text-amber-400">
+                        {result.explainability?.timeline_alignment?.match_passed ? 'PASSED ✓' : 'CONFLICT ⚠️'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </details>
+
+              {/* ACCORDION 2: DATED EVIDENCE TIMELINE */}
+              {result.timeline && result.timeline.length > 0 && (
+                <details className="mt-1 pt-3 border-t border-borderBase-light dark:border-borderBase-dark group">
+                  <summary className="cursor-pointer text-xs font-extrabold uppercase tracking-wider text-sky-400 hover:underline flex items-center justify-between select-none">
+                    <span>▼ Dated Evidence Timeline ({result.timeline.length} Milestones)</span>
+                    <span className="text-[10px] text-slate-400 font-normal">Chronological</span>
+                  </summary>
+
+                  <div className="flex flex-col gap-2.5 mt-3 p-4 rounded-xl bg-surface-light/50 dark:bg-surface-dark/50 border border-borderBase-light dark:border-borderBase-dark">
+                    {result.timeline.map((item, idx) => (
+                      <div key={idx} className="flex items-start gap-3 p-2.5 rounded-lg bg-black/20 border border-white/5">
+                        <div className="px-2 py-1 rounded bg-sky-500/20 text-sky-400 font-mono text-xs font-bold whitespace-nowrap">
+                          {item.date}
+                        </div>
+                        <div className="flex flex-col flex-1 gap-0.5">
+                          <span className="text-xs font-bold text-slate-200">{item.event}</span>
+                          <span className="text-[10px] text-slate-400">Source: {item.source} (Confidence: {Math.round(item.confidence * 100)}%)</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+
+              {/* ACCORDION 3: ADVANCED VERIFICATION & TELEMETRY GAUGES */}
               <details className="mt-1 pt-3 border-t border-borderBase-light dark:border-borderBase-dark group">
                 <summary className="cursor-pointer text-xs font-bold uppercase tracking-wider text-slate-400 hover:text-slate-200 flex items-center gap-2 select-none">
-                  <span>▼ Advanced Verification Details</span>
-                  <span className="text-[10px] font-normal text-slate-500">(How we analyzed this claim)</span>
+                  <span>▼ Telemetry & Radar Gauges</span>
+                  <span className="text-[10px] font-normal text-slate-500">(System Metrics)</span>
                 </summary>
                 
                 <div className="flex flex-col gap-4 mt-4">
-                  {/* SEARCH SCOPE METRICS */}
-                  <div className="p-3.5 rounded-xl bg-white/5 border border-white/5 grid grid-cols-3 gap-2 text-center">
-                    <div>
-                      <div className="text-base font-bold text-primary">{result.metadata?.sources_retrieved || 0}</div>
-                      <div className="text-[10px] text-slate-400 uppercase tracking-wider">Sources Checked</div>
-                    </div>
-                    <div>
-                      <div className="text-base font-bold text-emerald-400">{result.metadata?.trusted_domains_found?.length || 0}</div>
-                      <div className="text-[10px] text-slate-400 uppercase tracking-wider">Trusted Outlets</div>
-                    </div>
-                    <div>
-                      <div className="text-base font-bold text-sky-400">{result.compute_time_ms || 0}ms</div>
-                      <div className="text-[10px] text-slate-400 uppercase tracking-wider">Latency</div>
-                    </div>
-                  </div>
-
-                  {/* PROCESS AUDIT TRAIL */}
-                  <div className="p-3.5 rounded-xl bg-white/5 border border-white/5 flex flex-col gap-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Process Audit Trail</span>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                      <div className="p-2 rounded bg-black/20 text-xs flex flex-col gap-0.5">
-                        <span className="font-bold text-primary">1. Retrieval</span>
-                        <span className="text-[11px] text-slate-400">Queried 7 Search Tiers</span>
-                      </div>
-                      <div className="p-2 rounded bg-black/20 text-xs flex flex-col gap-0.5">
-                        <span className="font-bold text-emerald-400">2. Cross-Reference</span>
-                        <span className="text-[11px] text-slate-400">Evaluated Domain Trust</span>
-                      </div>
-                      <div className="p-2 rounded bg-black/20 text-xs flex flex-col gap-0.5">
-                        <span className="font-bold text-sky-400">3. Synthesis</span>
-                        <span className="text-[11px] text-slate-400">Status: {result.status}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* TELEMETRY GAUGES */}
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     <Gauge label="Confidence" value={result.scores?.confidence || 0} colorClass="text-emerald-500" />
                     <Gauge label="Bias" value={result.scores?.bias || 0} colorClass="text-amber-500" />

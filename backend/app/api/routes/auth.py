@@ -10,7 +10,7 @@ from app.core.security import hash_password, verify_password, create_access_toke
 from app.core.rate_limiter import rate_limiter
 from app.utils.logger import log
 
-router = APIRouter(prefix="/auth", tags=["authentication"])
+router = APIRouter(prefix="", tags=["authentication"])
 
 
 class RegisterRequest(BaseModel):

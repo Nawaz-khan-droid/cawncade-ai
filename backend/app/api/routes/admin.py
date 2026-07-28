@@ -10,7 +10,7 @@ from app.db.session import get_db
 from app.db.models import TrustedSource
 from app.utils.logger import log
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(prefix="", tags=["admin"])
 
 
 @router.get("/sources")

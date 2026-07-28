@@ -14,6 +14,7 @@ Bug Fixes Applied:
 import os
 import asyncio
 import httpx
+from typing import Dict, Any, List
 
 from langchain_openai import ChatOpenAI
 from langchain.agents import AgentExecutor, create_react_agent
@@ -28,6 +29,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from app.config.settings import get_settings
 from app.core.resilience import circuit_agent
 from app.utils.logger import log
+from app.core.cache import cache
 
 settings = get_settings()
 
@@ -150,6 +152,42 @@ def you_search(query: str) -> str:
         return f"You.com search failed: {e}"
 
 
+class SmartClaimRouter:
+    """
+    Multi-Signal Smart Claim Cost Router v3.5
+    Determines whether a claim can be resolved deterministically via Tier 4 (0 LLM Token Cost)
+    or requires full generative LLM reasoning.
+    """
+
+    def evaluate_route(self, claim: str, entity_confidence: float, tier1_sources: int, contradiction_count: int, total_sources: int) -> Dict[str, Any]:
+        has_complex_reasoning = any(kw in claim.lower() for kw in ["why", "how", "opinion", "predict", "future", "moral", "policy impact"])
+        contradiction_ratio = contradiction_count / max(1, total_sources)
+        
+        # Smart Routing Rule
+        is_simple_factual = (
+            not has_complex_reasoning 
+            and entity_confidence >= 0.70 
+            and tier1_sources >= 2 
+            and contradiction_ratio <= 0.20
+        )
+
+        selected_route = "tier_4_deterministic" if is_simple_factual else "llm_reasoning"
+        reason = (
+            "High entity confidence & strong Tier 1 evidence agreement (0 LLM tokens used)"
+            if is_simple_factual
+            else "Complex claim or conflicting evidence requires LLM reasoning"
+        )
+
+        return {
+            "selected_route": selected_route,
+            "is_simple_factual": is_simple_factual,
+            "reason": reason,
+            "cost_saved": is_simple_factual
+        }
+
+
+smart_claim_router = SmartClaimRouter()
+
 class CawncadeAgent:
     """
     ReAct agent powered by Llama 3.1 / Nemotron via OpenRouter & Hugging Face Router.
@@ -227,9 +265,14 @@ class CawncadeAgent:
             if not openrouter_key:
                 raise RuntimeError("OPENROUTER_API_KEY is missing from environment.")
 
-            # ── Multi-Provider Hybrid Fallback Wrapper ─────────
+            # ── Multi-Provider Hybrid Fallback Wrapper with Provider Health Memory ─────────
+            openrouter_health = cache.get("provider_health:openrouter")
+            if openrouter_health == "RATE_LIMITED":
+                log.info("[Agent] ⚡ Provider Health Memory: OpenRouter is RATE_LIMITED (skipping Tier 1 -> jumping straight to Tier 2 HF Router)")
+                raise RuntimeError("OpenRouter cached state: RATE_LIMITED")
+
             try:
-                log.info("[Agent] 🚀 Launching Tier 1: OpenRouter (NVIDIA Nemotron 3 Super 120B Free)...")
+                log.info("[Agent] 🚀 Launching Tier 1: OpenRouter (Nemotron 120B Free)...")
                 primary_llm = ChatOpenAI(
                     base_url="https://openrouter.ai/api/v1",
                     api_key=openrouter_key,
@@ -244,65 +287,60 @@ class CawncadeAgent:
                 self.llm_tier = "tier_1_openrouter"
                 self.fallback_used = False
             except Exception as e1:
-                log.warning(f"[Agent] ⚠️ Tier 1 OpenRouter dropped: {e1}. Cascading to Tier 2 HF Router (Groq Llama 3.3 70B)...")
+                if "429" in str(e1) or "rate limit" in str(e1).lower():
+                    cache.set("provider_health:openrouter", "RATE_LIMITED", ttl=3600)
+                    log.warning("[Agent] 🛑 OpenRouter rate limited (429). Provider Health Memory cached for 60m.")
+                log.warning(f"[Agent] ⚠️ Tier 1 OpenRouter dropped: {e1}. Cascading to Tier 2 HF Router...")
                 
-                # ── Tier 2: Hugging Face Router API + Groq LPU Engine ──
+                # ── Tier 2: Hugging Face Router API ──
                 hf_token = getattr(settings, "HUGGINGFACEHUB_API_TOKEN", None) or getattr(settings, "HUGGINGFACE_API_TOKEN", None) or os.getenv("HUGGINGFACEHUB_API_TOKEN")
                 if not hf_token:
-                    from huggingface_hub import get_token
-                    hf_token = get_token()
+                    try:
+                        from huggingface_hub import get_token
+                        hf_token = get_token()
+                    except Exception:
+                        hf_token = None
 
                 if hf_token:
-                    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), reraise=True)
-                    def _init_hf_groq():
-                        log.info("[Agent] 🛡️ Launching Tier 2: Hugging Face Router → Groq LPU (70B)...")
+                    try:
+                        log.info("[Agent] 🛡️ Launching Tier 2: Hugging Face Router → Llama 3.3 70B...")
                         llm = ChatOpenAI(
                             api_key=hf_token,
                             base_url="https://router.huggingface.co/v1",
-                            model="meta-llama/Llama-3.3-70B-Instruct:groq",
+                            model="meta-llama/Llama-3.3-70B-Instruct",
                             temperature=0.01,
-                            timeout=30
+                            timeout=15
                         )
                         llm.invoke("ping")
-                        return llm
-                        
-                    try:
-                        self.llm = _init_hf_groq()
-                        self.active_model = "meta-llama/Llama-3.3-70B-Instruct:groq"
-                        self.llm_tier = "tier_2_groq"
+                        self.llm = llm
+                        self.active_model = "meta-llama/Llama-3.3-70B-Instruct"
+                        self.llm_tier = "tier_2_hf_router"
                         self.fallback_used = True
-                        log.info("[Agent] ✅ Tier 2 (Groq) armed successfully.")
+                        log.info("[Agent] ✅ Tier 2 armed successfully.")
                     except Exception as e2:
-                        log.warning(f"[Agent] ⚠️ Tier 2 Groq saturated: {e2}. Cascading to Tier 3 HF Router (DeepInfra Gemma 27B)...")
-                        
-                        # ── Tier 3: Hugging Face Router API + DeepInfra Engine ──
-                        @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), reraise=True)
-                        def _init_hf_deepinfra():
-                            log.info("[Agent] 🛡️ Launching Tier 3: Hugging Face Router → DeepInfra (Gemma-3-27B)...")
+                        log.warning(f"[Agent] ⚠️ Tier 2 saturated: {e2}. Cascading to Tier 3...")
+                        try:
+                            log.info("[Agent] 🛡️ Launching Tier 3: Hugging Face Router → Gemma 27B...")
                             llm = ChatOpenAI(
                                 api_key=hf_token,
                                 base_url="https://router.huggingface.co/v1",
-                                model="google/gemma-3-27b-it:deepinfra",
+                                model="google/gemma-2-27b-it",
                                 temperature=0.01,
-                                timeout=30
+                                timeout=15
                             )
                             llm.invoke("ping")
-                            return llm
-                            
-                        try:
-                            self.llm = _init_hf_deepinfra()
-                            self.active_model = "google/gemma-3-27b-it:deepinfra"
-                            self.llm_tier = "tier_3_deepinfra"
+                            self.llm = llm
+                            self.active_model = "google/gemma-2-27b-it"
+                            self.llm_tier = "tier_3_hf_router"
                             self.fallback_used = True
-                            log.info("[Agent] ✅ Tier 3 (DeepInfra) armed successfully.")
                         except Exception as e3:
-                            log.warning(f"[Agent] 🔴 Tier 3 pipeline rejected request: {e3}. Dropping to Tier 4 Offline No-LLM Mode.")
+                            log.warning(f"[Agent] 🔴 Tier 3 rejected: {e3}. Dropping to Tier 4 Grounded Deterministic Mode.")
                             self.llm = None
                             self.active_model = "local_lexrank_nlp"
                             self.llm_tier = "tier_4_local_nlp"
                             self.fallback_used = True
                 else:
-                    log.warning(f"[Agent] 🔴 Critical Failure: No HF token provided. Dropping to Tier 4 Offline No-LLM Mode.")
+                    log.warning(f"[Agent] 🔴 No HF token provided. Dropping to Tier 4 Grounded Mode.")
                     self.llm = None
                     self.active_model = "local_lexrank_nlp"
                     self.llm_tier = "tier_4_local_nlp"

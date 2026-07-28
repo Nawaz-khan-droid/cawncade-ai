@@ -14,19 +14,19 @@ export default function SourceCard({ src }) {
     findingText: "Discusses related news; does not report that the claim occurred.",
   };
 
-  if (lowerSnippet.includes("debunk") || lowerSnippet.includes("fake") || lowerSnippet.includes("false")) {
+  if (src.stance === "CONTRADICTS" || lowerSnippet.includes("debunk") || lowerSnippet.includes("fake") || lowerSnippet.includes("false") || lowerSnippet.includes("untrue")) {
     stateConfig = {
       label: "Contradicts Claim",
       badgeClass: "bg-rose-500/15 text-rose-300 border-rose-500/30",
       icon: XCircle,
       findingText: "Explicitly refutes or debunks this claim.",
     };
-  } else if (src.is_trusted && (lowerSnippet.includes("confirm") || lowerSnippet.includes("official"))) {
+  } else if (src.stance === "SUPPORTS" || src.is_trusted || lowerSnippet.includes("created by") || lowerSnippet.includes("launched") || lowerSnippet.includes("located in") || lowerSnippet.includes("official") || lowerSnippet.includes("confirm")) {
     stateConfig = {
       label: "Supports Claim",
       badgeClass: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
       icon: CheckCircle2,
-      findingText: "Corroborates the claim with official reports.",
+      findingText: "Corroborates key claim entities with reference coverage.",
     };
   } else if (!src.snippet || src.snippet.length < 15) {
     stateConfig = {

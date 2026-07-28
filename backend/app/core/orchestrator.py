@@ -88,7 +88,7 @@ def generate_local_nlp_summary(scraped_evidence_text: str, num_sentences: int = 
 
 
 class Orchestrator:
-    """Main pipeline orchestrator. Truth over Speed: Reports conflicts rather than picking winners."""
+    """Main pipeline orchestrator. Evidence over Speed: Reports conflicts rather than picking winners."""
 
     def __init__(self):
         import os
@@ -136,13 +136,13 @@ class Orchestrator:
             except Exception as e:
                 log.error(f"[Orchestrator] Image decode/process failed: {e}")
 
-        # Step 1: Detect input type if not image
-        if input_type == "auto" and not image_base64:
+        # Step 1: Detect input type if not image (Auto-override frontend input_type if URL)
+        if not image_base64:
             if is_youtube_url(input_text):
                 input_type = "youtube"
             elif content_extractor.is_url(input_text):
                 input_type = "url"
-            else:
+            elif input_type == "auto":
                 input_type = "text"
 
         # Step 1.5: Extract content for URLs/YouTube
@@ -197,14 +197,23 @@ class Orchestrator:
                 query = topic if topic else "YouTube Video Claim Analysis"
                 extraction_meta["error"] = yt_result.get("error", "Transcript extraction failed")
 
+        # Ensure query is not a raw URL string before search
+        if content_extractor.is_url(query.strip()):
+            cleaned_topic = content_extractor.extract_keywords_from_url(query)
+            query = cleaned_topic if cleaned_topic else query.replace("https://", "").replace("http://", "").replace("www.", "")
+
         if not query.strip():
             return self._empty_result("Could not extract meaningful content from input.")
+
+        # Query Expansion Engine v2.0: Convert raw input/transcripts into 3-4 parallel expanded queries
+        from app.services.tier4.claim_parser import claim_parser
+        expanded_queries = claim_parser.generate_expanded_queries(query)
 
         # Append user query if provided to guide the agent
         if user_query:
             query = f"{query}\n\nUSER SPECIFIC CONTEXT/QUESTION: {user_query}"
 
-        log.info(f"[Orchestrator] Search query: '{query[:100]}'")
+        log.info(f"[Orchestrator] Multi-Query Expansion ({len(expanded_queries)} variations): {expanded_queries}")
 
         # -----------------------------------------------------------------
         # TIER 0: Local Text-Similarity Dictionary Matcher (Phase 5)
@@ -217,7 +226,7 @@ class Orchestrator:
                 import json
                 parsed_hit = json.loads(tier0_hit)
                 parsed_hit["compute_time_ms"] = compute_time
-                parsed_hit["answer"] = f"⚡ Instant Tier 0 Match: {parsed_hit.get('answer', '')}"
+                parsed_hit["answer"] = f"[TIER 0 MATCH]: {parsed_hit.get('answer', '')}"
                 return parsed_hit
             except Exception as e:
                 log.warning(f"[Orchestrator] Failed to parse Tier 0 cached JSON: {e}")
@@ -229,9 +238,9 @@ class Orchestrator:
         cached_match = semantic_cache.lookup(query, similarity_threshold=0.85)
         if cached_match:
             compute_time = int((time.time() - start_time) * 1000)
-            log.info("[Orchestrator] ⚡ Instant Semantic Cache Hit!")
+            log.info("[Orchestrator] [CACHE HIT] Instant Semantic Cache Hit!")
             return {
-                "answer": f"⚡ Instant Semantic Cache Match: {cached_match['matched_claim'][:100]}",
+                "answer": f"[CACHE MATCH]: {cached_match['matched_claim'][:100]}",
                 "context_summary": "This claim was previously analyzed and resolved locally.",
                 "agent_deep_dive": cached_match['verdict'],
                 "agreements": ["Local FAISS Cache"],
@@ -262,41 +271,52 @@ class Orchestrator:
                     "fact_check": fact_check_result, "fact_verdict": fact_verdict, "sources_retrieved": 0},
             }
 
-        # Step 3: Research - Tiered Search
+        # Step 3: Research - Tiered Search with Parallel Multi-Query Expansion
         try:
-            # Attempt to pass max_sources
-            search_result = await tiered_search(query, max_sources=max_sources)
+            search_result = await tiered_search(expanded_queries, max_sources=max_sources)
         except TypeError as e:
             if "max_sources" in str(e):
-                log.warning("[Orchestrator] tiered_search does not accept max_sources. Updating internal call.")
-                # Fallback to standard call if the service hasn't been updated yet
-                search_result = await tiered_search(query)
+                search_result = await tiered_search(expanded_queries)
             else:
                 raise e
         
         sources = search_result.get("sources", [])
 
-        # Step 4: Score sources
+        # Check for Infrastructure Retrieval Failure
+        if not sources:
+            compute_time = int((time.time() - start_time) * 1000)
+            return {
+                "answer": "INFRASTRUCTURE RETRIEVAL FAILURE: Unable to retrieve live web data across search tiers.",
+                "context_summary": "All search connectors were unreachable or returned 0 results. This reflects a network or search provider outage, not an evidence verdict.",
+                "agreements": [], "conflicts": [], "sources_cited": [],
+                "confidence": 0.0,
+                "scores": {"confidence": 0.0, "bias": 0.0, "conflict": 0.0, "sensitivity": 0.0, "ai_risk": 0.0, "recency": 0.0, "confidence_label": "INFRASTRUCTURE_FAILURE"},
+                "compute_time_ms": compute_time, "status": "infrastructure_failure",
+                "metadata": {"input_type": input_type, "extraction": extraction_meta, "sources_retrieved": 0}
+            }
+
+        # Step 4: Score sources & Direct Domain Trust Evaluation
+        trusted_domains_found = set()
+        trusted_keywords = ["britannica", "bbc", "reuters", "wikipedia", "nasa", "ap news", "associated press", "politifact", "snopes", "the hindu", "indian express", "ndtv", "hindustan times", "nytimes", "washington post"]
         for src in sources:
             domain = src.get("domain", "")
+            source_name = src.get("source_name", "").lower()
+            title_lower = src.get("title", "").lower()
             trust = get_trust_info(domain)
-            src["trust_tier"] = trust["label"]
-            src["trust_multiplier"] = trust["multiplier"]
-            src["credibility_score"] = trust["multiplier"]
+            
+            is_publisher_trusted = any(kw in source_name or kw in title_lower for kw in trusted_keywords)
+            is_trusted = trust["tier"] in (1, 2, 3, 4) or domain.endswith(".gov") or domain.endswith(".edu") or domain.endswith(".org") or is_publisher_trusted
+
+            src["trust_tier"] = trust["label"] if trust["tier"] != 0 else ("trusted_publisher" if is_publisher_trusted else "unknown")
+            src["trust_multiplier"] = max(trust["multiplier"], 0.85) if is_publisher_trusted else trust["multiplier"]
+            src["credibility_score"] = src["trust_multiplier"]
+            src["is_trusted_domain"] = is_trusted
             src["recency_score"] = compute_recency(src.get("published_at"))
+            if is_trusted:
+                trusted_domain_name = domain if domain and domain != "news.google.com" else (source_name.title() if source_name else "Trusted Publisher")
+                trusted_domains_found.add(trusted_domain_name)
 
-        # Step 5: Verify - Cross-source analysis
-        trusted_results = await verify_against_trusted(query)
-        trusted_domains_found = set()
-        for src in trusted_results:
-            d = src.get("domain", "")
-            if d:
-                trusted_domains_found.add(d)
-
-        for src in sources:
-            src["is_trusted_domain"] = src.get("domain", "") in trusted_domains_found
-
-        # Step 6: Compute aggregate scores
+        # Step 5: Compute aggregate scores
         scores = scoring_engine.compute_score(query, sources)
 
         # Step 7: Build synthesis
@@ -334,18 +354,41 @@ class Orchestrator:
 
         compute_time = int((time.time() - start_time) * 1000)
 
+        # Step 9: v3.5 Explainability, Dated Timeline & Smart Cost-Routing Integration
+        from app.services.tier4.verification_service import tier4_verification_service
+        from app.services.agent_service import smart_claim_router
+        from app.core.resilience import get_all_circuit_breaker_telemetry
+
+        explainable_data = tier4_verification_service.analyze_explainable_verification(query, sources)
+        
+        smart_route = smart_claim_router.evaluate_route(
+            claim=query,
+            entity_confidence=explainable_data["explainability"]["entity_alignment"]["score"],
+            tier1_sources=explainable_data["explainability"]["source_quality"]["tier1_sources"],
+            contradiction_count=explainable_data["explainability"]["conflict_breakdown"]["contradiction"],
+            total_sources=len(sources)
+        )
+
+        circuit_telemetry = get_all_circuit_breaker_telemetry()
+
         # ── Telemetry Metadata Collection ──
         system_meta = {
             "model_used": getattr(cawncade_agent, "active_model", "local_lexrank_nlp"),
             "llm_tier": getattr(cawncade_agent, "llm_tier", "tier_4_local_nlp"),
             "fallback_used": getattr(cawncade_agent, "fallback_used", False),
             "latency_ms": compute_time,
+            "smart_route": smart_route,
+            "circuit_telemetry": circuit_telemetry
         }
 
         result = {
+            "verdict": synthesis.get("verdict_code", explainable_data["verdict"]),
             "answer": synthesis.get("layer1_claim", ""),
             "context_summary": synthesis.get("layer2_verification", ""),
             "agent_deep_dive": synthesis.get("layer3_deep_dive", ""),
+            "explainability": explainable_data["explainability"],
+            "timeline": explainable_data["timeline"],
+            "conflict_breakdown": explainable_data["explainability"]["conflict_breakdown"],
             "agreements": synthesis.get("agreements", []),
             "conflicts": synthesis.get("conflicts", []),
             "sources_cited": [
@@ -355,7 +398,7 @@ class Orchestrator:
                  "retrieval_tier": s.get("retrieval_tier", "")}
                 for s in sources[:10]
             ],
-            "confidence": scores.get("confidence", 0.0), "scores": scores,
+            "confidence": scores.get("confidence", explainable_data["confidence_score"]), "scores": scores,
             "compute_time_ms": compute_time, "status": "completed",
             "system_metadata": system_meta,
             "metadata": {"input_type": input_type, "extraction": extraction_meta,
@@ -388,24 +431,45 @@ class Orchestrator:
         )
 
     def _build_synthesis(self, query, sources, scores, fact_verdict, extraction_meta, trusted_domains, tier_stats):
+        import re
         title = extraction_meta.get("title", query[:100])
         layer1 = f"Analysis of: {title}"
 
-        trusted_count = len(trusted_domains)
-        total = len(sources)
+        # Extract core subject entity from query (e.g. "Modi" from "Modi Resigned")
+        stop_words = {"the", "from", "post", "that", "this", "been", "was", "has", "have", "with", "for", "and", "about", "news", "today"}
+        query_words = [w for w in re.findall(r'\b[A-Za-z]{3,}\b', query) if w.lower() not in stop_words]
+        main_subject = query_words[0] if query_words else ""
+
+        # Check if subject entity actually appears in retrieved evidence
+        subject_matched_sources = []
+        for s in sources:
+            text = (s.get("title", "") + " " + s.get("snippet", "") + " " + s.get("source_name", "")).lower()
+            if not main_subject or main_subject.lower() in text:
+                subject_matched_sources.append(s)
+
+        trusted_subject_sources = [s for s in subject_matched_sources if s.get("is_trusted_domain")]
+        trusted_count = len(trusted_subject_sources)
 
         if fact_verdict.get("verdict") and "No prior" not in fact_verdict.get("verdict", ""):
+            verdict_code = "FALSE_DEBUNKED" if fact_verdict.get("debunked") else "VERIFIED_TRUE"
             layer2 = fact_verdict["verdict"]
-        elif trusted_count > total * 0.5:
-            layer2 = f"Claim corroborated by {trusted_count} trusted source(s) out of {total} sources reviewed. Trusted domains: {', '.join(list(trusted_domains)[:5])}."
-        elif trusted_count > 0:
-            layer2 = f"Partially verified. {trusted_count} trusted source(s) confirmed coverage, but {total - trusted_count} unverified source(s) also reported on this topic. Cross-referencing recommended."
+        elif trusted_count >= 1:
+            verdict_code = "VERIFIED_TRUE"
+            src_names = list(dict.fromkeys([s.get('source_name', s.get('domain', 'Reference Site')) for s in trusted_subject_sources]))
+            layer2 = f"Claim corroborated across trusted sources reporting on {main_subject or 'this topic'} ({', '.join(src_names[:3])})."
+        elif len(subject_matched_sources) > 0:
+            verdict_code = "UNVERIFIED"
+            layer2 = f"Mentioned in web sources, but lacks primary wire service or official news confirmation."
         else:
-            layer2 = f"No confirmation from trusted sources found across {total} results. This claim has not been verified by established fact-checkers or wire services."
+            verdict_code = "UNVERIFIED"
+            layer2 = f"No corroborating evidence found for this specific claim. Retrieved web data discusses unrelated news and does not report that '{query}' occurred."
 
         return {
-            "layer1_claim": layer1, "layer2_verification": layer2, "layer3_deep_dive": "",
-            "agreements": [s["source_name"] for s in sources if s.get("is_trusted_domain")][:5],
+            "verdict_code": verdict_code,
+            "layer1_claim": layer1, 
+            "layer2_verification": layer2, 
+            "layer3_deep_dive": "",
+            "agreements": [s.get("source_name", "") for s in trusted_subject_sources][:5],
             "conflicts": [],
         }
 

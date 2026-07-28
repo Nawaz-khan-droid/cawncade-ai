@@ -5,7 +5,13 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from .api.routes import analysis, auth, admin # Ensure these imports match your structure
 
+from app.db.session import init_db
+
 app = FastAPI(title="CAWNCADE AI v3.0")
+
+@app.on_event("startup")
+def on_startup():
+    init_db()
 
 # 1. Wide CORS for Hugging Face subdomains & Local Vite Server
 app.add_middleware(

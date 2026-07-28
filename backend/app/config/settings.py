@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     PORT: int = 7860
 
     # ── Database (SQLite for HF Spaces Persistent Storage) ──
-    DATABASE_URL: str = "sqlite:////data/cawncade.db"  # HF Variable: DATABASE_URL
+    DATABASE_URL: str = "sqlite:///./db/cawncade.db"  # HF Variable: DATABASE_URL
 
     # ── JWT Authentication ──
     JWT_SECRET_KEY: str = "change-me-in-production"  # HF Secret: JWT_SECRET_KEY
@@ -138,7 +138,13 @@ class Settings(BaseSettings):
     ]
 
     class Config:
-        env_file = ".env"
+        import os
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        env_file = [
+            os.path.join(base_dir, ".env"),
+            os.path.join(base_dir, "backend", ".env"),
+            ".env"
+        ]
         case_sensitive = True
 
 

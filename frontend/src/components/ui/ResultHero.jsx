@@ -18,10 +18,8 @@ export default function ResultHero({ result }) {
 
   if (!result) return null;
 
-  const isDebunked = result.status === "debunked" || (result.scores?.confidence === 0 && result.context_summary?.toLowerCase().includes("debunk"));
-  const hasTrusted = (result.metadata?.trusted_domains_found?.length || 0) > 0;
-  const isHighConf = result.confidence >= 70 && hasTrusted;
-  const isNoSources = result.status === "no_sources" || (result.metadata?.sources_retrieved || 0) < 2;
+  const verdictCode = (result.verdict || "").toUpperCase();
+  const trustedList = result.metadata?.trusted_domains_found || [];
 
   // Subtle dark palette with vertical left accent stripe
   let themeConfig = {
@@ -30,16 +28,31 @@ export default function ResultHero({ result }) {
     borderColor: "border-amber-500/30",
     titleColor: "text-amber-400",
     icon: AlertTriangle,
-    verdictTitle: "UNVERIFIED",
-    verdictSoWhat: "No trusted source currently confirms this claim.",
+    verdictTitle: "UNVERIFIED / UNSUBSTANTIATED",
+    verdictSoWhat: result.context_summary || "No trusted source currently confirms this claim.",
     confLevel: "Low",
     whyBullets: [
-      (result.metadata?.sources_retrieved || 0) <= 1 ? "Only one relevant source found" : `${result.metadata?.sources_retrieved || 0} web sources retrieved`,
-      "No official government or wire service confirmation",
+      (result.metadata?.sources_retrieved || 0) <= 1 ? "Limited web coverage retrieved" : `${result.metadata?.sources_retrieved || 0} web sources evaluated`,
+      "Lacks official wire service or government confirmation",
     ],
   };
 
-  if (isDebunked) {
+  if (verdictCode === "VERIFIED_TRUE" || verdictCode === "SUPPORTED") {
+    themeConfig = {
+      stripe: "border-l-4 border-emerald-500",
+      bgGradient: "bg-gradient-to-br from-emerald-950/40 via-surface-dark/95 to-slate-950",
+      borderColor: "border-emerald-500/30",
+      titleColor: "text-emerald-400",
+      icon: CheckCircle2,
+      verdictTitle: "VERIFIED / SUPPORTED BY EVIDENCE",
+      verdictSoWhat: result.context_summary || `Claim corroborated across ${trustedList.length || 1} trusted outlets.`,
+      confLevel: result.confidence >= 60 ? "High" : "Moderate",
+      whyBullets: [
+        `Corroborated across ${trustedList.length || 1} trusted outlet(s): ${trustedList.slice(0, 3).join(', ')}`,
+        "Consistent official documentation and reference coverage"
+      ],
+    };
+  } else if (verdictCode === "FALSE_DEBUNKED" || verdictCode === "FALSE" || result.status === "debunked") {
     themeConfig = {
       stripe: "border-l-4 border-rose-500",
       bgGradient: "bg-gradient-to-br from-rose-950/40 via-surface-dark/95 to-slate-950",
@@ -47,23 +60,11 @@ export default function ResultHero({ result }) {
       titleColor: "text-rose-400",
       icon: XCircle,
       verdictTitle: "FALSE / DEBUNKED",
-      verdictSoWhat: "Established fact-checking organizations have officially debunked this assertion.",
+      verdictSoWhat: result.context_summary || "Established fact-checking organizations have officially debunked this assertion.",
       confLevel: "High",
       whyBullets: ["Official debunking record found in fact-check database", "Contradicted by established news reporting"],
     };
-  } else if (isHighConf) {
-    themeConfig = {
-      stripe: "border-l-4 border-emerald-500",
-      bgGradient: "bg-gradient-to-br from-emerald-950/40 via-surface-dark/95 to-slate-950",
-      borderColor: "border-emerald-500/30",
-      titleColor: "text-emerald-400",
-      icon: CheckCircle2,
-      verdictTitle: "VERIFIED TRUE",
-      verdictSoWhat: "Multiple trusted news agencies and official sources confirm this event.",
-      confLevel: "High",
-      whyBullets: [`Corroborated across ${result.metadata?.trusted_domains_found?.length || 1} trusted outlets`, "Consistent official documentation"],
-    };
-  } else if (isNoSources) {
+  } else if (result.status === "no_sources" || (result.metadata?.sources_retrieved || 0) === 0) {
     themeConfig = {
       stripe: "border-l-4 border-orange-500",
       bgGradient: "bg-gradient-to-br from-orange-950/40 via-surface-dark/95 to-slate-950",

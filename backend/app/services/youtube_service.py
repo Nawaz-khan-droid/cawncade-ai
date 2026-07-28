@@ -143,9 +143,13 @@ async def fetch_transcript_scraper(video_id: str, languages: list = None) -> dic
         try:
             return YouTubeTranscriptApi.get_transcript(video_id, languages=languages)
         except Exception as e:
-            # Fallback to list/find if direct fetch fails
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-            return transcript_list.find_transcript(languages).fetch()
+            if hasattr(YouTubeTranscriptApi, 'list_transcripts'):
+                transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+                return transcript_list.find_transcript(languages).fetch()
+            elif hasattr(YouTubeTranscriptApi, 'list'):
+                transcript_list = YouTubeTranscriptApi().list(video_id)
+                return transcript_list.find_transcript(languages).fetch()
+            raise e
 
     try:
         loop = asyncio.get_event_loop()

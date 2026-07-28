@@ -195,13 +195,18 @@ class ContentExtractor:
     def extract_keywords_from_url(self, url: str) -> str:
         try:
             parsed = urlparse(url)
+            domain = parsed.netloc.lower().replace("www.", "")
             path = unquote(parsed.path)
             path = re.sub(r"^(/en-in|/en|/news|/article|/story|/world|/india)+", "", path, flags=re.I)
             path = re.sub(r"\.(html|htm|php|asp|aspx)$", "", path, flags=re.I)
-            words = re.split(r"[-/]", path)
-            stop_words = {"en", "in", "news", "article", "story", "world", "india", "the", "a", "an", "ar", "aa", "bb", "cc", "com", "www", "http", "https"}
-            meaningful = [w for w in words if len(w) > 2 and w.lower() not in stop_words]
-            return " ".join(meaningful[:10]) if meaningful else ""
+            path = path.replace("@", " ")
+            words = re.split(r"[-/_.]", path)
+            stop_words = {"en", "in", "news", "article", "story", "world", "india", "the", "a", "an", "ar", "aa", "bb", "cc", "com", "www", "http", "https", "watch", "channel", "user", "c", "org", "gov", "edu", "net"}
+            meaningful = [w for w in words if len(w) >= 2 and w.lower() not in stop_words and not w.isdigit()]
+            res = " ".join(meaningful[:10]) if meaningful else ""
+            if "youtube.com" in domain or "youtu.be" in domain:
+                return f"{res} YouTube official channel".strip() if res else "YouTube channel"
+            return res
         except Exception:
             return ""
 
