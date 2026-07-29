@@ -365,7 +365,7 @@ class Orchestrator:
             claim=query,
             entity_confidence=explainable_data["explainability"]["entity_alignment"]["score"],
             tier1_sources=explainable_data["explainability"]["source_quality"]["tier1_sources"],
-            contradiction_count=explainable_data["explainability"]["conflict_breakdown"]["contradiction"],
+            contradiction_count=explainable_data["explainability"]["conflict_breakdown"].get("contradicting", 0),
             total_sources=len(sources)
         )
 
