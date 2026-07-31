@@ -21,7 +21,13 @@ class RateLimiter:
             return True
         now = time.time()
         window_start = now - self.window_seconds
+        # Prune expired timestamps
         self.requests[key] = [ts for ts in self.requests[key] if ts > window_start]
+        # EDGE-07 FIX: Remove empty keys to prevent memory bloat from unique-IP floods
+        if not self.requests[key]:
+            del self.requests[key]
+            self.requests[key].append(now)  # defaultdict recreates it cleanly
+            return True
         if len(self.requests[key]) >= self.max_requests:
             return False
         self.requests[key].append(now)

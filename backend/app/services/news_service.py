@@ -14,13 +14,15 @@ import asyncio
 import httpx
 import feedparser
 import urllib.parse
+from urllib.parse import urlparse  # EDGE-04 FIX: proper URL parsing
 import os
+from collections import defaultdict  # PERF-02 FIX: per-domain article count
 from datetime import datetime, timezone
 from app.config.settings import get_settings
 from app.core.cache import cache
 from app.core.resilience import (
     circuit_google_search, circuit_tavily, circuit_newsapi,
-    circuit_newsdata, circuit_gdelt, circuit_google_news,
+    circuit_newsdata, circuit_gdelt, circuit_google_news, circuit_you_com,
 )
 from app.core.trusted_domains import get_google_site_filter, ALL_TRUSTED_DOMAINS
 from app.utils.logger import log
@@ -111,51 +113,50 @@ async def resolve_destination_url(url: str, client: httpx.AsyncClient = None) ->
     """Unwraps google news redirect URLs (news.google.com) to extract the actual publisher URL."""
     if "news.google.com" not in url:
         return url
+    # BUG-03 FIX: Always close a client we created ourselves, even on exception
+    _own_client = client is None
+    _client = client if client is not None else _get_httpx_client(8.0)
     try:
-        should_close = False
-        if client is None:
-            client = _get_httpx_client(8.0)
-            should_close = True
-        
-        # Google RSS links reject HEAD requests or return javascript redirects; use GET with standard browser headers
-        resp = await client.get(url, follow_redirects=True)
+        resp = await _client.get(url, follow_redirects=True)
         final_url = str(resp.url)
-        
-        if should_close:
-            await client.aclose()
-            
         if "news.google.com" not in final_url:
             return final_url
     except Exception:
         pass
+    finally:
+        if _own_client:
+            await _client.aclose()
     return url
 
 # ═══════════════════════════════════════════════════════════════
 # TIER 2: DuckDuckGo (Promoted)
 # ═══════════════════════════════════════════════════════════════
 async def search_duckduckgo(query: str) -> list:
-    """Tier 2: Fast, unlimited fallback using ddgs / duckduckgo_search."""
+    """Tier 5: Fast, unlimited fallback using ddgs / duckduckgo_search."""
     clean_q = extract_search_keywords(query)
-    try:
+
+    # BUG-04 FIX: DDGS.text() is a BLOCKING synchronous call.
+    # Running it directly in an async function blocks the entire event loop.
+    # Use run_in_executor to offload it to a thread pool.
+    def _sync_ddg_search():
         try:
             from ddgs import DDGS
         except ImportError:
             from duckduckgo_search import DDGS
-            
-        results = []
         with DDGS() as ddgs:
-            raw_results = list(ddgs.text(clean_q, max_results=5))
-            for r in raw_results:
-                results.append(r)
-                
+            return list(ddgs.text(clean_q, max_results=5))
+
+    try:
+        loop = asyncio.get_running_loop()
+        raw_results = await loop.run_in_executor(None, _sync_ddg_search)
         return [{
-            "url": r.get("href") or r.get("link", ""), 
-            "title": r.get("title", ""), 
-            "snippet": r.get("body") or r.get("snippet", ""), 
-            "source_name": "DuckDuckGo", 
-            "channel": "duckduckgo", 
+            "url": r.get("href") or r.get("link", ""),
+            "title": r.get("title", ""),
+            "snippet": r.get("body") or r.get("snippet", ""),
+            "source_name": "DuckDuckGo",
+            "channel": "duckduckgo",
             "retrieval_tier": "tier_2"
-        } for r in results if r.get("href") or r.get("link")]
+        } for r in raw_results if r.get("href") or r.get("link")]
     except Exception as e:
         log.error(f"[Search] DDG Failed: {e}")
         return []
@@ -304,7 +305,10 @@ async def search_you_com(query: str) -> list:
                 "channel": "you_com",
                 "retrieval_tier": "tier_2"
             } for r in data.get("hits", [])]
-    return await circuit_tavily.call(_call) or []
+    # REFACTOR-04 FIX: Use dedicated circuit_you_com, not circuit_tavily.
+    # You.com and Tavily are independent services; shared circuit breaker would
+    # cause one service's outage to trip the other's breaker incorrectly.
+    return await circuit_you_com.call(_call) or []
 
 # ═══════════════════════════════════════════════════════════════
 # TIER 3: NewsData.io & NewsAPI.org
@@ -429,22 +433,31 @@ async def tiered_search(query: str | list[str], max_sources: int = 10, **kwargs)
         ]
 
         q_results = await asyncio.gather(*q_tasks, return_exceptions=True)
+        # PERF-02 FIX: Track per-domain article count; allow up to 3 per domain
+        # instead of 1, so same-domain articles with different angles are preserved.
+        domain_counts: dict = defaultdict(int)
         high_trust_count = 0
 
         for result in q_results:
             if isinstance(result, list):
                 for src in result:
                     url = src.get("url", "")
-                    if not url or url in seen_urls: continue
-                    domain = url.split("//")[-1].split("/")[0].replace("www.", "").lower()
+                    if not url or url in seen_urls:
+                        continue
+                    # EDGE-04 FIX: Use urlparse for robust domain extraction
+                    parsed_url = urlparse(url)
+                    domain = (parsed_url.hostname or "").replace("www.", "").lower()
+                    if not domain:
+                        continue
+                    if domain_counts[domain] >= 3:  # max 3 articles per domain
+                        continue
                     seen_urls.add(url)
-                    if domain not in seen_domains:
-                        seen_domains.add(domain)
-                        src["domain"] = domain
-                        all_sources.append(src)
-                        
-                        if (domain in HIGH_TRUST_DOMAINS or domain.endswith(".gov") or domain.endswith(".edu")) and len(src.get("snippet", "")) > 40:
-                            high_trust_count += 1
+                    domain_counts[domain] += 1
+                    src["domain"] = domain
+                    all_sources.append(src)
+
+                    if (domain in HIGH_TRUST_DOMAINS or domain.endswith(".gov") or domain.endswith(".edu")) and len(src.get("snippet", "")) > 40:
+                        high_trust_count += 1
 
         # Stance & Relevance-Aware Adaptive Early Stopping Check
         if high_trust_count >= 3 and len(all_sources) >= 4:

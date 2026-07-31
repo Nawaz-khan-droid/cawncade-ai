@@ -45,7 +45,11 @@ class EntityResolver:
         return {
             "input": text,
             "candidates": candidates,
-            "high_confidence_entities": high_conf_entities
+            "high_confidence_entities": high_conf_entities,
+            # EDGE-05 FIX: entity_aliases was missing — claim_parser.generate_expanded_queries
+            # calls linked.get('entity_aliases') to build enriched search queries.
+            # Without this key, that branch was permanently dead code.
+            "entity_aliases": [c["entity"] for c in candidates],
         }
 
 

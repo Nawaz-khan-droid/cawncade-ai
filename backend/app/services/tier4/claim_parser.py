@@ -3,7 +3,7 @@ CAWNCADE AI v3.5 — Tier 4 Claim Decomposition Parser.
 Decomposes user claims into structured subjects, actions, dates, numbers, and entities.
 """
 
-import re
+import re  # REFACTOR-06 FIX: import at module level, not inside functions
 from typing import Dict, Any, List
 from app.utils.logger import log
 
@@ -160,9 +160,15 @@ class ClaimParser:
                 if loc.lower() in q_lower: score += 15.0
 
         else: # POLITICS_NEWS
-            # Weighting: Person/Org (35%), Location (25%), Date (20%), Keywords (20%)
-            for ent in structured_claim.get("organizations", []) + structured_claim.get("people", []):
-                if ent.lower() in q_lower: score += 35.0
+            # Weighting: Person/Org (35% capped), Location (25%), Date (20%), Keywords (20%)
+            # EDGE-03 FIX: Cap the per-category entity contribution at 35 points.
+            # Without the cap, 3 orgs would score 105 (over 100) and tie with 2-org claims at 100%,
+            # destroying the ranking signal for genuinely higher-quality queries.
+            entity_score = min(35.0, sum(
+                35.0 for ent in structured_claim.get("organizations", []) + structured_claim.get("people", [])
+                if ent.lower() in q_lower
+            ))
+            score += entity_score
             for loc in structured_claim.get("locations", []):
                 if loc.lower() in q_lower: score += 25.0
             for year in structured_claim.get("years", []) + structured_claim.get("dates", []):

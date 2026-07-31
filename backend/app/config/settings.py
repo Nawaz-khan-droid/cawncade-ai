@@ -9,6 +9,7 @@ HuggingFace Space Configuration:
   Secrets (Private): HUGGINGFACE_API_TOKEN, JWT_SECRET_KEY, GOOGLE_API_KEY,
                      TAVILY_API_KEY, NEWSDATA_API_KEY, NEWS_API_KEY
 """
+import os
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
 from functools import lru_cache
@@ -80,6 +81,20 @@ class Settings(BaseSettings):
     def strip_whitespace(cls, v: str) -> str:
         return v.strip() if isinstance(v, str) else v
 
+    # SEC-02 FIX: Prevent weak default JWT secret reaching production
+    @field_validator("JWT_SECRET_KEY")
+    @classmethod
+    def validate_jwt_secret(cls, v: str) -> str:
+        env = os.getenv("ENVIRONMENT", "production")
+        if v == "change-me-in-production" and env == "production":
+            raise ValueError(
+                "JWT_SECRET_KEY must be changed from the default value in production. "
+                "Set a cryptographically random string of at least 32 characters."
+            )
+        if len(v) < 16:
+            raise ValueError("JWT_SECRET_KEY must be at least 16 characters long.")
+        return v
+
     # ── Google Cloud Storage (DB Backup — uses same GOOGLE_API_KEY) ──
     GCS_BUCKET_NAME: str = ""              # Optional: set as Variable or Secret
     GCS_BACKUP_ENABLED: bool = False       # Toggle backup on/off
@@ -137,15 +152,23 @@ class Settings(BaseSettings):
         "https://*.hf.space",
     ]
 
-    class Config:
-        import os
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        env_file = [
-            os.path.join(base_dir, ".env"),
-            os.path.join(base_dir, "backend", ".env"),
+    # BUG-06 FIX: Do NOT use `import` inside a class body.
+    # os is imported at the top of this module.
+    model_config = {
+        "env_file": [
+            os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                ".env"
+            ),
+            os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                "backend", ".env"
+            ),
             ".env"
-        ]
-        case_sensitive = True
+        ],
+        "case_sensitive": True,
+        "extra": "ignore",
+    }
 
 
 @lru_cache()

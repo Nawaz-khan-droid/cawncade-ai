@@ -45,17 +45,36 @@ class SemanticFactCache:
         return faiss.IndexFlatIP(self.dimension), [], []
 
     def save_cache_to_disk(self):
-        """Serializes and saves the memory vector structures safely to local storage."""
+        """Serializes and saves the memory vector structures safely to local storage.
+
+        EDGE-06 FIX: Uses atomic write pattern (write to temp, then rename) to
+        prevent FAISS index and metadata JSON from getting out of sync if the
+        process crashes between the two write operations.
+        """
+        import shutil
         try:
-            # Write binary vector arrays
-            faiss.write_index(self.index, INDEX_FILE)
-            
-            # Write text payloads
-            with open(METADATA_FILE, "w", encoding="utf-8") as f:
+            index_tmp = INDEX_FILE + ".tmp"
+            meta_tmp = METADATA_FILE + ".tmp"
+
+            # 1. Write both to temp files first
+            faiss.write_index(self.index, index_tmp)
+            with open(meta_tmp, "w", encoding="utf-8") as f:
                 json.dump({"claims": self.cached_claims, "verdicts": self.cached_verdicts}, f)
+
+            # 2. Atomically replace old files (rename is atomic on POSIX; os.replace on Windows)
+            shutil.move(index_tmp, INDEX_FILE)
+            shutil.move(meta_tmp, METADATA_FILE)
+
             log.info("[CacheService] [SAVED] Vector cache saved successfully to local persistent storage.")
         except Exception as e:
             log.error(f"[CacheService] Failed to back up cache components: {e}")
+            # Clean up any temp files that might be left behind
+            for tmp in [INDEX_FILE + ".tmp", METADATA_FILE + ".tmp"]:
+                try:
+                    if os.path.exists(tmp):
+                        os.remove(tmp)
+                except Exception:
+                    pass
 
     def lookup(self, user_claim: str, similarity_threshold: float = 0.85):
         """Checks if a matching claim exists in the local vector cache."""

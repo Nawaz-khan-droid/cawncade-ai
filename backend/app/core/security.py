@@ -4,6 +4,7 @@ Handles JWT authentication, password hashing, and input sanitization.
 """
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+import re  # REFACTOR-06 FIX: module-level import, not inside function body
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import HTTPException, status, Depends
@@ -56,7 +57,6 @@ async def get_current_user_id(credentials: HTTPAuthorizationCredentials = Depend
 
 
 def sanitize_input(text: str) -> str:
-    import re
     blocked = [
         "ignore previous instructions", "system prompt", "override",
         "you are now", "pretend", "jailbreak",

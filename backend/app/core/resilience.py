@@ -91,11 +91,13 @@ circuit_vision = CircuitBreaker("vision", failure_threshold=3, reset_timeout=600
 circuit_gdelt = CircuitBreaker("gdelt", failure_threshold=5, reset_timeout=600)
 circuit_google_news = CircuitBreaker("google_news", failure_threshold=5, reset_timeout=600)
 circuit_agent = CircuitBreaker("llm_agent", failure_threshold=3, reset_timeout=600)
+# REFACTOR-04 FIX: Dedicated circuit breaker for You.com (independent of Tavily)
+circuit_you_com = CircuitBreaker("you_com", failure_threshold=3, reset_timeout=600)
 
 def get_all_circuit_breaker_telemetry() -> dict:
     """Returns real-time status & error telemetry across all search & LLM provider circuit breakers."""
     breakers = [
-        circuit_google_search, circuit_tavily, circuit_fact_check,
+        circuit_google_search, circuit_tavily, circuit_you_com, circuit_fact_check,
         circuit_newsdata, circuit_youtube, circuit_gdelt,
         circuit_google_news, circuit_agent
     ]

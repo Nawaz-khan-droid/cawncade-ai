@@ -16,7 +16,9 @@ class InMemoryCache:
         self._lock = threading.Lock()
 
     def _make_key(self, key: str) -> str:
-        return hashlib.md5(key.encode()).hexdigest() if len(key) > 200 else key
+        # REFACTOR-05 FIX: Use SHA-256 instead of MD5 (MD5 is cryptographically broken
+        # and triggers security scanners). Truncate to 32 chars to keep keys compact.
+        return hashlib.sha256(key.encode()).hexdigest()[:32] if len(key) > 200 else key
 
     def get(self, key: str):
         key = self._make_key(key)

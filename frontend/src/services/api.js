@@ -37,11 +37,17 @@ class CAWNCADEAPI {
   }
 
   async submitFeedback({ request_id, user_rating, user_comment, was_helpful }) {
+    // REFACTOR-02 FIX: Handle HTTP errors consistently with analyze() and analyzeImage().
+    // Without this check, 4xx/5xx errors would return as apparent "successes".
     const response = await fetch(`${this.baseUrl}/analysis/feedback`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ request_id, user_rating, user_comment, was_helpful }),
     });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Feedback submission failed' }));
+      throw new Error(error.detail || `HTTP ${response.status}`);
+    }
     return response.json();
   }
 

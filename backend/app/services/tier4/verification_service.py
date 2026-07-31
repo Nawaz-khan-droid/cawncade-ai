@@ -151,7 +151,7 @@ class Tier4VerificationService:
 
         return {
             "verdict": verdict_res["verdict"],
-            "confidence_score": float(verdict_res["confidence"].replace("%", "")) if isinstance(verdict_res["confidence"], str) else float(verdict_res["confidence"]),
+            "confidence_score": verdict_res.get("confidence_num", 0.0),  # EDGE-02 FIX: use numeric key, not label string
             "explainability": {
                 "entity_alignment": {
                     "matched_entities": match_stats.get("matched_entities", []),

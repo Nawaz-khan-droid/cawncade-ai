@@ -7,9 +7,6 @@ from typing import Dict, Any
 
 
 class VerdictEngine:
-    """Calculates grounded deterministic verdicts without claiming generative AI reasoning."""
-
-class VerdictEngine:
     """Calculates grounded deterministic verdicts using mathematical confidence & sentence stance analysis."""
 
     def calculate_verdict(self, match_stats: Dict[str, Any], sources_count: int, evidence_length: int, trusted_count: int = 0, stance_counts: Dict[str, int] = None) -> Dict[str, Any]:
