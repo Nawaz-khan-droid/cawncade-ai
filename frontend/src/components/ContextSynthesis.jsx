@@ -55,7 +55,7 @@ export default function ContextSynthesis({ summary, isLoading }) {
       const parts = para.split(urlRegex);
 
       return (
-        <p key={pIdx} className="mb-3 leading-relaxed whitespace-pre-wrap break-words text-slate-200 text-sm md:text-base">
+        <p key={pIdx} className="mb-3 leading-relaxed whitespace-pre-wrap break-words text-slate-800 dark:text-slate-200 text-sm md:text-base">
           {parts.map((part, idx) => {
             if (part.match(/^https?:\/\//)) {
               let domain = part;
@@ -83,7 +83,7 @@ export default function ContextSynthesis({ summary, isLoading }) {
             const boldParts = part.split(/(\*\*.*?\*\*)/g);
             return boldParts.map((bPart, bIdx) => {
               if (bPart.startsWith('**') && bPart.endsWith('**')) {
-                return <strong key={bIdx} className="text-white font-semibold">{bPart.slice(2, -2)}</strong>;
+                return <strong key={bIdx} className="text-slate-900 dark:text-white font-semibold">{bPart.slice(2, -2)}</strong>;
               }
               return <span key={bIdx}>{bPart}</span>;
             });
@@ -97,10 +97,10 @@ export default function ContextSynthesis({ summary, isLoading }) {
     <div className="glass-card p-6 md:p-8 h-full flex flex-col gap-4">
       <div className="flex items-center gap-3 pb-3 border-b border-white/5">
         <FileText className="w-5 h-5 text-primary" />
-        <h2 className="text-lg font-bold text-white">Analysis Summary</h2>
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white">Analysis Summary</h2>
       </div>
 
-      <div className="prose prose-invert max-w-none text-text leading-relaxed w-full overflow-hidden">
+      <div className="prose dark:prose-invert max-w-none text-slate-800 dark:text-slate-200 leading-relaxed w-full overflow-hidden">
         {renderFormattedText(cleanText)}
       </div>
     </div>

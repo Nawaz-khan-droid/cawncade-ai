@@ -57,7 +57,7 @@ const RadialGauge = ({ value, label, type = 'standard' }) => {
           />
         </svg>
         <div className="flex flex-col items-center leading-none z-10 translate-y-3">
-          <span className="text-2xl font-bold text-white tracking-tight">{percentage}%</span>
+          <span className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{percentage}%</span>
         </div>
       </div>
       <div className="flex items-center gap-1.5 mt-4">
@@ -86,7 +86,7 @@ export default function ReliabilityMatrix({ scores, isLoading }) {
 
   return (
     <div className="glass-card p-6 md:p-8">
-      <h2 className="text-xl font-semibold mb-6 flex items-center gap-2 text-white">
+      <h2 className="text-xl font-semibold mb-6 flex items-center gap-2 text-slate-900 dark:text-white">
         Reliability Matrix
         <span className="text-xs font-normal text-text-muted bg-surface-800 px-2 py-1 rounded-md border border-white/10">Multivector Analysis</span>
       </h2>

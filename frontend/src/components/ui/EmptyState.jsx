@@ -13,13 +13,13 @@ export default function EmptyState({
       </div>
 
       <div className="flex flex-col gap-1 max-w-md">
-        <h4 className="text-base font-bold text-slate-100">{title}</h4>
-        <p className="text-xs text-slate-300 leading-relaxed">{description}</p>
+        <h4 className="text-base font-bold text-slate-900 dark:text-slate-100">{title}</h4>
+        <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">{description}</p>
       </div>
 
       <div className="w-full max-w-md p-4 rounded-xl bg-white/5 border border-white/5 flex flex-col gap-2 text-left text-xs">
         <span className="font-extrabold uppercase tracking-wider text-slate-400">Try Refining Your Search:</span>
-        <ul className="space-y-1.5 text-slate-300 font-medium">
+        <ul className="space-y-1.5 text-slate-700 dark:text-slate-300 font-medium">
           <li className="flex items-center gap-2">
             <ArrowRight className="w-3 h-3 text-primary shrink-0" />
             <span>Use specific names or exact quote keywords</span>

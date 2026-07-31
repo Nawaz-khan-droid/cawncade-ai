@@ -182,7 +182,7 @@ export default function ContextLens() {
               ) : (
                 <div className="glass-card p-4 md:p-6 flex flex-col gap-2 rounded-2xl">
                   <span className="text-xs font-extrabold uppercase tracking-widest text-slate-400">Analysis Summary</span>
-                  <p className="text-sm font-medium text-slate-200 leading-relaxed">
+                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200 leading-relaxed">
                     {result.context_summary}
                   </p>
                 </div>
@@ -217,7 +217,7 @@ export default function ContextLens() {
                   {/* EVIDENCE CONFLICT BAR */}
                   {result.conflict_breakdown && (
                     <div className="flex flex-col gap-1.5">
-                      <div className="flex justify-between text-xs font-bold text-slate-300">
+                      <div className="flex justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
                         <span>Evidence Agreement Breakdown</span>
                         <span className="text-emerald-400">
                           {result.conflict_breakdown.supporting} Supporting / {result.conflict_breakdown.contradicting} Contradicting
@@ -279,7 +279,7 @@ export default function ContextLens() {
                           {item.date}
                         </div>
                         <div className="flex flex-col flex-1 gap-0.5">
-                          <span className="text-xs font-bold text-slate-200">{item.event}</span>
+                          <span className="text-xs font-bold text-slate-900 dark:text-slate-200">{item.event}</span>
                           <span className="text-[10px] text-slate-400">Source: {item.source} (Confidence: {Math.round(item.confidence * 100)}%)</span>
                         </div>
                       </div>

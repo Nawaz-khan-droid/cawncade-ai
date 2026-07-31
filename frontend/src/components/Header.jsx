@@ -11,7 +11,7 @@ export default function Header() {
           <div className="w-8 h-8 rounded bg-gradient-to-tr from-primary to-cyan-400 flex items-center justify-center shadow-[0_0_15px_rgba(59,130,246,0.5)]">
             <Activity className="w-5 h-5 text-white" />
           </div>
-          <h1 className="text-xl font-bold tracking-tight text-white">
+          <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
             CAWNCADE <span className="text-primary font-medium">AI</span>
           </h1>
         </div>
@@ -26,7 +26,7 @@ export default function Header() {
             <span className="text-sm font-medium text-text-muted">System Online</span>
           </div>
           
-          <button className="p-2 text-text-muted hover:text-white transition-colors hover:bg-white/5 rounded-full" aria-label="Settings">
+          <button className="p-2 text-text-muted hover:text-slate-900 dark:hover:text-white transition-colors hover:bg-black/5 dark:hover:bg-white/5 rounded-full" aria-label="Settings">
             <Settings className="w-5 h-5" />
           </button>
         </div>

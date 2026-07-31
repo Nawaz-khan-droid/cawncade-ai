@@ -187,7 +187,7 @@ export default function VisualLens() {
                   <FileText className="w-4 h-4 text-primary" />
                   <span className="text-xs font-extrabold uppercase tracking-widest text-slate-400">Forensic Analysis Summary</span>
                 </div>
-                <p className="text-sm font-medium text-slate-200 leading-relaxed">
+                <p className="text-sm font-medium text-slate-800 dark:text-slate-200 leading-relaxed">
                   {result.answer || result.context_summary || "Visual analysis complete."}
                 </p>
               </div>
@@ -207,15 +207,15 @@ export default function VisualLens() {
                     </div>
                     <div className="p-3 rounded-xl bg-white/5 border border-white/5 flex flex-col gap-1">
                       <span className="text-[10px] uppercase font-bold text-slate-400">Format</span>
-                      <span className="text-sm font-semibold text-slate-200">{result.metadata?.format || 'PNG / JPG'}</span>
+                      <span className="text-sm font-semibold text-slate-900 dark:text-slate-200">{result.metadata?.format || 'PNG / JPG'}</span>
                     </div>
                     <div className="p-3 rounded-xl bg-white/5 border border-white/5 flex flex-col gap-1">
                       <span className="text-[10px] uppercase font-bold text-slate-400">Dimensions</span>
-                      <span className="text-sm font-semibold text-slate-200">{result.metadata?.size || 'Auto-Detected'}</span>
+                      <span className="text-sm font-semibold text-slate-900 dark:text-slate-200">{result.metadata?.size || 'Auto-Detected'}</span>
                     </div>
                     <div className="p-3 rounded-xl bg-white/5 border border-white/5 flex flex-col gap-1">
                       <span className="text-[10px] uppercase font-bold text-slate-400">Analysis Mode</span>
-                      <span className="text-sm font-semibold text-slate-200">{result.metadata?.mode || 'RGB'}</span>
+                      <span className="text-sm font-semibold text-slate-900 dark:text-slate-200">{result.metadata?.mode || 'RGB'}</span>
                     </div>
                   </div>
                 ) : (

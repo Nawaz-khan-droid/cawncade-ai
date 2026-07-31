@@ -32,7 +32,7 @@ export default function VisualLensOutput({ result, isLoading }) {
     <div className="glass-card p-6 md:p-8">
       <div className="flex items-center gap-3 mb-6 pb-4 border-b border-white/5">
         <ImageIcon className="w-5 h-5 text-primary" />
-        <h2 className="text-xl font-semibold text-white">VisualLens Analysis</h2>
+        <h2 className="text-xl font-semibold text-slate-900 dark:text-white">VisualLens Analysis</h2>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -62,14 +62,14 @@ export default function VisualLensOutput({ result, isLoading }) {
             <div className={clsx("p-3 rounded-full bg-surface-900 shadow-lg", colorClass)}>
               <Icon className="w-8 h-8" />
             </div>
-            <h3 className="text-2xl font-bold text-white uppercase tracking-wider">{result.classification}</h3>
+            <h3 className="text-2xl font-bold text-slate-900 dark:text-white uppercase tracking-wider">{result.classification}</h3>
             <p className="text-sm font-medium text-text-muted">
               Confidence: <span className={clsx("font-bold text-lg", colorClass)}>{Math.round((result.confidence || 0) * 100)}%</span>
             </p>
           </div>
 
           <div className="bg-surface-800 rounded-xl p-6 border border-white/5">
-            <h4 className="text-sm font-semibold text-white mb-3 uppercase tracking-wider flex items-center gap-2">
+            <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-3 uppercase tracking-wider flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-warning" /> Forensic Details
             </h4>
             <p className="text-text-muted text-sm leading-relaxed">

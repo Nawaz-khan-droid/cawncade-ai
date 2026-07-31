@@ -10,8 +10,8 @@ export default function LoadingState({ message = "Analyzing Claim & Cross-Checki
       </div>
 
       <div className="flex flex-col items-center text-center gap-1.5 max-w-sm">
-        <h4 className="text-base font-bold text-slate-100">{message}</h4>
-        <p className="text-xs text-slate-400">Evaluating web sources, domain trust signatures, and vector index graphs...</p>
+        <h4 className="text-base font-bold text-slate-900 dark:text-slate-100">{message}</h4>
+        <p className="text-xs text-slate-600 dark:text-slate-400">Evaluating web sources, domain trust signatures, and vector index graphs...</p>
       </div>
 
       <div className="grid grid-cols-3 gap-3 w-full max-w-md pt-2 border-t border-white/5 text-xs text-slate-400 font-medium">

@@ -102,7 +102,7 @@ export default function ResultHero({ result }) {
       </div>
 
       {/* So-What Explanation */}
-      <p className="text-sm md:text-base font-semibold text-slate-200 leading-relaxed">{themeConfig.verdictSoWhat}</p>
+      <p className="text-sm md:text-base font-semibold text-slate-800 dark:text-slate-200 leading-relaxed">{themeConfig.verdictSoWhat}</p>
 
       {/* Mobile Collapse Toggle Button (<768px) */}
       <div className="md:hidden">
@@ -120,7 +120,7 @@ export default function ResultHero({ result }) {
       <div className={`${showMobileDetails ? 'flex' : 'hidden md:flex'} flex-col gap-3 pt-2 border-t border-white/10`}>
         <div className="flex flex-col gap-1.5">
           <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Why?</span>
-          <ul className="text-xs space-y-1 list-disc list-inside text-slate-300 font-medium">
+          <ul className="text-xs space-y-1 list-disc list-inside text-slate-700 dark:text-slate-300 font-medium">
             {themeConfig.whyBullets.map((b, i) => (
               <li key={i}>{b}</li>
             ))}
@@ -128,7 +128,7 @@ export default function ResultHero({ result }) {
         </div>
 
         {/* EVIDENCE SNAPSHOT BADGES */}
-        <div className="flex items-center gap-2 pt-2 border-t border-white/10 flex-wrap text-xs font-medium text-slate-300">
+        <div className="flex items-center gap-2 pt-2 border-t border-white/10 flex-wrap text-xs font-medium text-slate-700 dark:text-slate-300">
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10">
             <Check className="w-3.5 h-3.5 text-primary" />
             <span>{result.metadata?.sources_retrieved || 0} Sources</span>
@@ -155,7 +155,7 @@ export default function ResultHero({ result }) {
 
         {/* INLINE UNVERIFIED NOTE */}
         {(themeConfig.verdictTitle === "UNVERIFIED" || themeConfig.verdictTitle === "INSUFFICIENT EVIDENCE") && (
-          <div className="text-xs text-slate-300/90 font-normal pt-2 border-t border-white/10 flex items-start gap-2 leading-relaxed">
+          <div className="text-xs text-slate-700 dark:text-slate-300/90 font-normal pt-2 border-t border-white/10 flex items-start gap-2 leading-relaxed">
             <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
             <span>
               <strong>Unverified</strong> means no reliable evidence currently confirms the claim. It does <em>not</em> necessarily mean the claim is false. Confidence reflects available evidence quantity—not truth value.

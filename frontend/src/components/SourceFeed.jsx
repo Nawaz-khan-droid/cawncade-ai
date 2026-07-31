@@ -44,7 +44,7 @@ const SourceCard = ({ source, index }) => {
       </div>
 
       {/* Title */}
-      <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-white font-medium hover:text-primary transition-colors line-clamp-2">
+      <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-slate-900 dark:text-white font-medium hover:text-primary transition-colors line-clamp-2">
         [{index + 1}] {source.title}
       </a>
 
@@ -60,7 +60,7 @@ const SourceCard = ({ source, index }) => {
             style={{ width: `${Math.max(5, source.credibility_score * 100)}%` }}
           />
         </div>
-        <span className="text-xs font-semibold text-white">{Math.round(source.credibility_score * 100)}%</span>
+        <span className="text-xs font-semibold text-slate-900 dark:text-white">{Math.round(source.credibility_score * 100)}%</span>
       </div>
 
       {/* Expandable Content */}
@@ -107,7 +107,7 @@ export default function SourceFeed({ sources, isLoading }) {
       <div className="flex items-center justify-between mb-6 pb-4 border-b border-white/5">
         <div className="flex items-center gap-3">
           <Database className="w-5 h-5 text-primary" />
-          <h2 className="text-lg font-semibold text-white">Source Verification</h2>
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Source Verification</h2>
         </div>
         <span className="text-xs text-text-muted">{sources.length} Retrieved</span>
       </div>

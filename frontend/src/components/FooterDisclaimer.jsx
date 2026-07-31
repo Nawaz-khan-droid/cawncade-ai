@@ -9,7 +9,7 @@ export default function FooterDisclaimer() {
           <Info className="w-4 h-4" />
         </div>
         <p className="text-sm text-text-muted max-w-3xl leading-relaxed">
-          <strong className="text-white font-medium">Disclaimer:</strong> CAWNCADE AI provides probabilistic insights based on retrieved data and multi-vector analysis. It does not determine absolute truth. Results should be used to assist human judgment, not replace it.
+          <strong className="text-slate-900 dark:text-white font-medium">Disclaimer:</strong> CAWNCADE AI provides probabilistic insights based on retrieved data and multi-vector analysis. It does not determine absolute truth. Results should be used to assist human judgment, not replace it.
         </p>
         <p className="text-xs text-text-muted/50 mt-2">
           &copy; {new Date().getFullYear()} CAWNCADE AI Platform. All rights reserved.
