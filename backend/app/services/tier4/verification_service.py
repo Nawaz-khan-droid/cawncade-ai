@@ -116,8 +116,14 @@ class Tier4VerificationService:
             else: conflict_breakdown["neutral"] += 1
 
         # 2. Source Trust Metrics
-        HIGH_TRUST_DOMAINS = {"nasa.gov", "reuters.com", "bbc.com", "who.int", "cdc.gov", "nih.gov", "nature.com", "snopes.com", "politifact.com"}
-        tier1_count = sum(1 for s in sources if any(domain in s.get("url", "") or domain in s.get("domain", "") for domain in HIGH_TRUST_DOMAINS) or s.get("url", "").endswith(".gov") or s.get("url", "").endswith(".edu"))
+        from app.core.trusted_domains import ALL_TRUSTED_DOMAINS
+        HIGH_TRUST_DOMAINS = set(ALL_TRUSTED_DOMAINS) | {
+            "nasa.gov", "reuters.com", "bbc.com", "who.int", "cdc.gov", "nih.gov", "nature.com", 
+            "snopes.com", "politifact.com", "britannica.com", "wikipedia.org", "apnews.com", 
+            "theguardian.com", "mashable.com", "forbes.com", "cnn.com", "bloomberg.com", 
+            "nytimes.com", "washingtonpost.com", "ndtv.com", "indianexpress.com"
+        }
+        tier1_count = sum(1 for s in sources if s.get("is_trusted_domain") or any(domain in s.get("url", "") or domain in s.get("domain", "") for domain in HIGH_TRUST_DOMAINS) or s.get("url", "").endswith(".gov") or s.get("url", "").endswith(".edu"))
 
         # 3. Dated Timeline Generator with Confidence Metrics
         timeline_events = []

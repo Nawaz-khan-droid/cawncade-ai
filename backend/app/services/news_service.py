@@ -272,11 +272,13 @@ async def search_google_news_rss(query: str) -> list:
                 if "news.google.com" in res_url and matched_domain:
                     res_url = f"https://www.{matched_domain}"
 
+                extracted_domain = matched_domain or urllib.parse.urlparse(res_url).netloc.replace("www.", "").lower()
                 articles.append({
                     "url": res_url, 
+                    "domain": extracted_domain,
                     "title": title, 
                     "snippet": clean_html(e.summary),
-                    "source_name": publisher, 
+                    "source_name": publisher if publisher != "Google News" else (matched_domain.title() if matched_domain else "Google News"), 
                     "channel": "google_news_rss",
                     "retrieval_tier": "tier_5"
                 })
