@@ -2,7 +2,10 @@ import os
 import json
 import faiss
 import numpy as np
-from sentence_transformers import SentenceTransformer
+# PERF-01 FIX: Use the shared embedding singleton instead of loading a second
+# all-MiniLM-L6-v2 instance here. evidence_ranker.py loads the same model;
+# this singleton ensures both share one ~90MB in-memory instance.
+from app.services.embedding_singleton import get_embedding_model
 from app.utils.logger import log
 
 # We store the cache index and metadata locally to survive app restarts
@@ -12,22 +15,20 @@ METADATA_FILE = os.path.join(os.path.dirname(__file__), "..", "db", "cache_metad
 class SemanticFactCache:
     def __init__(self, model_name="sentence-transformers/all-MiniLM-L6-v2"):
         """Initializes a local, ultra-lightweight CPU vector cache."""
-        log.info("[CacheService] Initializing local semantic embedding model...")
-        
-        # We try to initialize everything in a lazy or robust way
-        try:
-            self.encoder = SentenceTransformer(model_name)
-        except Exception as e:
-            log.warning(f"[CacheService] Could not load SentenceTransformer (maybe downloading). {e}")
-            self.encoder = None
+        log.info("[CacheService] Initializing semantic cache (using shared embedding singleton)...")
 
         # Dimensions for all-MiniLM-L6-v2 is 384
         self.dimension = 384
-        
+
         # Ensure the DB directory exists
         os.makedirs(os.path.dirname(INDEX_FILE), exist_ok=True)
 
         self.index, self.cached_claims, self.cached_verdicts = self.load_cache_from_disk()
+
+    @property
+    def encoder(self):
+        """Returns the shared embedding model (lazy-loaded singleton)."""
+        return get_embedding_model()
 
     def load_cache_from_disk(self):
         """Restores the database state from files if they exist on the container."""

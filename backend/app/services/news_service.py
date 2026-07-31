@@ -29,6 +29,19 @@ from app.utils.logger import log
 
 settings = get_settings()
 
+# ── REFACTOR-07 FIX: Shared persistent httpx client with connection pooling ──
+# Previously, every search function created a fresh AsyncClient, opening new TCP
+# connections each time. Under 7-parallel asyncio.gather() tasks this meant 7
+# fresh connections per query set — expensive and slow.
+#
+# This shared client keeps up to 20 keep-alive connections and 50 max total,
+# reusing existing TCP/TLS sessions across search calls for much lower latency.
+#
+# The client is created lazily on first use. Call close_shared_client() on
+# application shutdown (handled by main.py lifespan).
+_shared_httpx_client: httpx.AsyncClient | None = None
+
+
 def _get_browser_headers() -> dict:
     """Realistic browser User-Agent for all outbound requests."""
     return {
@@ -39,14 +52,39 @@ def _get_browser_headers() -> dict:
         )
     }
 
+
+async def get_shared_client() -> httpx.AsyncClient:
+    """Returns (or creates) the module-level shared httpx client."""
+    global _shared_httpx_client
+    if _shared_httpx_client is None or _shared_httpx_client.is_closed:
+        _shared_httpx_client = httpx.AsyncClient(
+            timeout=20.0,
+            follow_redirects=True,
+            headers=_get_browser_headers(),
+            limits=httpx.Limits(
+                max_keepalive_connections=20,
+                max_connections=50,
+                keepalive_expiry=30,
+            ),
+        )
+    return _shared_httpx_client
+
+
+async def close_shared_client():
+    """Gracefully closes the shared httpx client. Call from app lifespan shutdown."""
+    global _shared_httpx_client
+    if _shared_httpx_client and not _shared_httpx_client.is_closed:
+        await _shared_httpx_client.aclose()
+        _shared_httpx_client = None
+
+
 def _get_httpx_client(timeout: float = 20.0) -> httpx.AsyncClient:
-    """Create httpx client with standardized browser headers."""
-    kwargs = {
-        "timeout": timeout, 
-        "follow_redirects": True, 
-        "headers": _get_browser_headers(),
-    }
-    return httpx.AsyncClient(**kwargs)
+    """Legacy factory kept for one-off short-lived clients (e.g. redirect resolution)."""
+    return httpx.AsyncClient(
+        timeout=timeout,
+        follow_redirects=True,
+        headers=_get_browser_headers(),
+    )
 # ═══════════════════════════════════════════════════════════════
 # TIER 1: Google Custom Search
 # ═══════════════════════════════════════════════════════════════

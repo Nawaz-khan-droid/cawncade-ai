@@ -71,6 +71,12 @@ async def check_url(url: str) -> dict:
     if cached is not None:
         return {**cached, "cached": True}
 
+    # SEC-06 NOTE: Google Safe Browsing v4 API mandates the key as a URL query
+    # parameter — there is no header-based auth for this API version.
+    # MITIGATION: Restrict this API key in the GCP Console to:
+    #   - Allowed IPs: only your server/Spaces egress IPs
+    #   - API restriction: Safe Browsing API only
+    # This prevents the key from being usable even if leaked from access logs.
     endpoint = f"https://safebrowsing.googleapis.com/v4/threatMatches:find?key={settings.GOOGLE_API_KEY}"
     payload = {
         "client": {"clientId": "cawncade-ai", "clientVersion": "3.0.0"},

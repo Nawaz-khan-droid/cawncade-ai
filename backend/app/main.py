@@ -10,6 +10,7 @@ from app.config.settings import get_settings
 from app.db.session import init_db
 from app.core.cache import cache
 from app.utils.logger import log
+from app.services.news_service import close_shared_client
 
 settings = get_settings()
 
@@ -38,6 +39,7 @@ async def lifespan(app: FastAPI):
         await cleanup_task
     except asyncio.CancelledError:
         pass
+    await close_shared_client()  # REFACTOR-07: drain httpx connection pool
     log.info("[Shutdown] Background tasks stopped.")
 
 

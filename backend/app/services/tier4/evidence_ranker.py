@@ -14,14 +14,15 @@ except ImportError:
     HAS_BM25 = False
 
 try:
-    from sentence_transformers import SentenceTransformer, util
-    # Shared CPU instance for semantic similarity scoring
-    minilm_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-    multi_minilm_model = SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+    from sentence_transformers import util
+    # PERF-01 FIX: Use the shared singleton instead of loading a separate instance here.
+    # Previously this loaded ~90MB of model weights a second time (cache_service.py loads
+    # the same model). Now both modules share a single in-memory instance.
+    from app.services.embedding_singleton import get_embedding_model, get_multilingual_model
     HAS_MINILM = True
 except Exception:
-    minilm_model = None
-    multi_minilm_model = None
+    get_embedding_model = lambda: None  # type: ignore
+    get_multilingual_model = lambda: None  # type: ignore
     HAS_MINILM = False
 
 
@@ -60,13 +61,11 @@ class EvidenceRanker:
         
         if HAS_MINILM:
             try:
-                # Select appropriate model based on detected language
-                if lang != "en" and multi_minilm_model is not None:
-                    active_model = multi_minilm_model
-                elif minilm_model is not None:
-                    active_model = minilm_model
+                # Select appropriate model via singleton (lazy-loaded, shared across app)
+                if lang != "en":
+                    active_model = get_multilingual_model()
                 else:
-                    active_model = None
+                    active_model = get_embedding_model()
 
                 if active_model:
                     query_emb = active_model.encode(query, convert_to_tensor=True)
