@@ -43,8 +43,20 @@ export default function ContextSynthesis({ summary, isLoading }) {
     .replace(/Reasoning:\s*The deep-check engine is currently unavailable\.?\s*/gi, '')
     .replace(/Initial data snippet:\s*/gi, '')
     // Fix broken newline domain list items: "- \n reuters.com" -> "- https://reuters.com"
-    .replace(/-\s*\n\s*([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '- https://$1')
-    .trim();
+    .replace(/-\s*\n\s*([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '- https://$1');
+
+  // Smart Deduplication: If the raw summary contains structured template headers,
+  // strip the redundant "Final Verdict", "Confidence Score", and "Verified Sources" blocks
+  // (since Verdict/Confidence are shown in the Hero Banner above, and Sources are shown in the Grid below).
+  if (/###\s*(?:🏷️\s*)?Final Verdict/i.test(cleanText)) {
+    cleanText = cleanText
+      .replace(/###\s*(?:🏷️\s*)?Final Verdict[\s\S]*?(?=###|\Z)/gi, '')
+      .replace(/###\s*(?:📊\s*)?Confidence Score[\s\S]*?(?=###|\Z)/gi, '')
+      .replace(/###\s*(?:🌐\s*)?Verified Sources[\s\S]*?(?=###|\Z)/gi, '')
+      .replace(/###\s*(?:🔍\s*)?Concrete Evidence & Findings/gi, '');
+  }
+
+  cleanText = cleanText.trim();
 
   if (!cleanText) return null;
 
