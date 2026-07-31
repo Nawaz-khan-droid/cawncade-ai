@@ -21,8 +21,11 @@ class PreFlightDictionaryMatcher:
         self._load_dictionary()
 
     def _normalize_text(self, text: str) -> str:
-        """Strips out capitalization, punctuation, and padding to normalize matches."""
+        """Strips out capitalization, punctuation, padding, and appended prompt instructions."""
         import string
+        # Strip out any appended prompt instructions or user context overrides
+        text = text.split("\n\nUSER SPECIFIC CONTEXT")[0]
+        text = text.split("Make sure formatting matches")[0]
         text = text.lower().strip()
         # Remove trailing question marks or punctuation marks
         text = text.translate(str.maketrans('', '', string.punctuation))

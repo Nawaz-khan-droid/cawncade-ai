@@ -42,6 +42,7 @@ export default function ContextSynthesis({ summary, isLoading }) {
     .replace(/PRELIMINARY ASSESSMENT\s*/gi, '')
     .replace(/Reasoning:\s*The deep-check engine is currently unavailable\.?\s*/gi, '')
     .replace(/Initial data snippet:\s*/gi, '')
+    .replace(/Make sure formatting matches[\s\S]*/gi, '')
     // Fix broken newline domain list items: "- \n reuters.com" -> "- https://reuters.com"
     .replace(/-\s*\n\s*([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '- https://$1');
 
