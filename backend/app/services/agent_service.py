@@ -279,6 +279,7 @@ class CawncadeAgent:
                     model="nvidia/nemotron-3-super-120b-a12b:free",
                     temperature=0.01,
                     max_tokens=1024,
+                    timeout=10,
                     model_kwargs={"extra_headers": {"HTTP-Referer": "http://localhost:3000", "X-Title": "Cawncade AI"}}
                 )
                 primary_llm.invoke("ping")
