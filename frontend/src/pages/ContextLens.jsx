@@ -242,21 +242,21 @@ export default function ContextLens() {
 
                   {/* SIGNALS GRID */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 mt-1">
-                    <div className="p-3 rounded-lg bg-black/20 border border-white/5 flex flex-col gap-1">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Entity Overlap</span>
-                      <span className="text-sm font-extrabold text-emerald-400">
+                    <div className="p-3 rounded-lg bg-slate-100 dark:bg-black/20 border border-slate-200 dark:border-white/5 flex flex-col gap-1">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">Entity Overlap</span>
+                      <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400">
                         {Math.round((result.explainability?.entity_alignment?.score || 0) * 100)}% Matched
                       </span>
                     </div>
-                    <div className="p-3 rounded-lg bg-black/20 border border-white/5 flex flex-col gap-1">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">High-Trust Tier 1</span>
-                      <span className="text-sm font-extrabold text-sky-400">
+                    <div className="p-3 rounded-lg bg-slate-100 dark:bg-black/20 border border-slate-200 dark:border-white/5 flex flex-col gap-1">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">High-Trust Tier 1</span>
+                      <span className="text-sm font-extrabold text-sky-600 dark:text-sky-400">
                         {result.explainability?.source_quality?.tier1_sources || 0} / {result.explainability?.source_quality?.total_sources || 0} Outlets
                       </span>
                     </div>
-                    <div className="p-3 rounded-lg bg-black/20 border border-white/5 flex flex-col gap-1">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Timeline Alignment</span>
-                      <span className="text-sm font-extrabold text-amber-400">
+                    <div className="p-3 rounded-lg bg-slate-100 dark:bg-black/20 border border-slate-200 dark:border-white/5 flex flex-col gap-1">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">Timeline Alignment</span>
+                      <span className="text-sm font-extrabold text-amber-600 dark:text-amber-400">
                         {result.explainability?.timeline_alignment?.match_passed ? 'PASSED ✓' : 'CONFLICT ⚠️'}
                       </span>
                     </div>
@@ -274,13 +274,13 @@ export default function ContextLens() {
 
                   <div className="flex flex-col gap-2.5 mt-3 p-4 rounded-xl bg-surface-light/50 dark:bg-surface-dark/50 border border-borderBase-light dark:border-borderBase-dark">
                     {result.timeline.map((item, idx) => (
-                      <div key={idx} className="flex items-start gap-3 p-2.5 rounded-lg bg-black/20 border border-white/5">
-                        <div className="px-2 py-1 rounded bg-sky-500/20 text-sky-400 font-mono text-xs font-bold whitespace-nowrap">
+                      <div key={idx} className="flex items-start gap-3 p-2.5 rounded-lg bg-slate-100 dark:bg-black/20 border border-slate-200 dark:border-white/5">
+                        <div className="px-2 py-1 rounded bg-sky-500/20 text-sky-600 dark:text-sky-400 font-mono text-xs font-bold whitespace-nowrap">
                           {item.date}
                         </div>
                         <div className="flex flex-col flex-1 gap-0.5">
                           <span className="text-xs font-bold text-slate-900 dark:text-slate-200">{item.event}</span>
-                          <span className="text-[10px] text-slate-400">Source: {item.source} (Confidence: {Math.round(item.confidence * 100)}%)</span>
+                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Source: {item.source} (Confidence: {Math.round(item.confidence * 100)}%)</span>
                         </div>
                       </div>
                     ))}
