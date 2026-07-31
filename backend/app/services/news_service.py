@@ -138,14 +138,15 @@ async def search_google_custom(query: str, trusted_only: bool = False) -> list:
     return articles
 
 def extract_search_keywords(query: str) -> str:
-    """Extracts key named entities and keywords from a claim for search query formulation."""
+    """Extracts clean search keywords from a claim for search query formulation."""
     import re
-    if len(query) < 40:
-        return query
-    # Remove common filler phrases
-    cleaned = re.sub(r'\b(is located in|was created by|announced that|according to|claims that|has been|was|is|are|were)\b', ' ', query, flags=re.I)
-    cleaned = " ".join(cleaned.split())
-    return cleaned[:150] if cleaned else query[:150]
+    import string
+    # Clean punctuation and question marks
+    clean = query.translate(str.maketrans('', '', string.punctuation))
+    # Remove leading question words
+    clean = re.sub(r'^(did|does|do|is|are|was|were|has|have|had|will|would|could|should|can|who|what|where|when|why|how)\s+', '', clean, flags=re.I)
+    clean = " ".join(clean.split())
+    return clean[:150] if clean else query[:150]
 
 async def resolve_destination_url(url: str, client: httpx.AsyncClient = None) -> str:
     """Unwraps google news redirect URLs (news.google.com) to extract the actual publisher URL."""

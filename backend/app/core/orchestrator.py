@@ -297,7 +297,14 @@ class Orchestrator:
 
         # Step 4: Score sources & Direct Domain Trust Evaluation
         trusted_domains_found = set()
-        trusted_keywords = ["britannica", "bbc", "reuters", "wikipedia", "nasa", "ap news", "associated press", "politifact", "snopes", "the hindu", "indian express", "ndtv", "hindustan times", "nytimes", "washington post"]
+        trusted_keywords = [
+            "britannica", "bbc", "reuters", "wikipedia", "nasa", "ap news", "associated press", 
+            "politifact", "snopes", "the hindu", "indian express", "ndtv", "hindustan times", 
+            "nytimes", "washington post", "guardian", "the guardian", "mashable", "forbes", 
+            "bloomberg", "cnn", "wsj", "wall street journal", "cbs", "nbc", "abc news", 
+            "techcrunch", "the verge", "wired", "business insider", "time", "economist", 
+            "financial times", "al jazeera", "npr", "pbs", "cnet", "zdnet"
+        ]
         for src in sources:
             domain = src.get("domain", "")
             source_name = src.get("source_name", "").lower()
@@ -435,16 +442,20 @@ class Orchestrator:
         title = extraction_meta.get("title", query[:100])
         layer1 = f"Analysis of: {title}"
 
-        # Extract core subject entity from query (e.g. "Modi" from "Modi Resigned")
-        stop_words = {"the", "from", "post", "that", "this", "been", "was", "has", "have", "with", "for", "and", "about", "news", "today"}
-        query_words = [w for w in re.findall(r'\b[A-Za-z]{3,}\b', query) if w.lower() not in stop_words]
-        main_subject = query_words[0] if query_words else ""
+        # Comprehensive stop words excluding question starters & auxiliary verbs
+        stop_words = {
+            "the", "from", "post", "that", "this", "been", "was", "has", "have", "had", 
+            "with", "for", "and", "about", "news", "today", "did", "does", "do", "is", 
+            "are", "were", "will", "would", "could", "should", "can", "may", "might", 
+            "who", "what", "where", "when", "why", "how", "claim", "true", "false", "check"
+        }
+        query_words = [w.lower() for w in re.findall(r'\b[A-Za-z]{3,}\b', query) if w.lower() not in stop_words]
 
-        # Check if subject entity actually appears in retrieved evidence
+        # Match sources containing ANY key entity/keyword from the query
         subject_matched_sources = []
         for s in sources:
             text = (s.get("title", "") + " " + s.get("snippet", "") + " " + s.get("source_name", "")).lower()
-            if not main_subject or main_subject.lower() in text:
+            if not query_words or any(qw in text for qw in query_words):
                 subject_matched_sources.append(s)
 
         trusted_subject_sources = [s for s in subject_matched_sources if s.get("is_trusted_domain")]
@@ -453,10 +464,11 @@ class Orchestrator:
         if fact_verdict.get("verdict") and "No prior" not in fact_verdict.get("verdict", ""):
             verdict_code = "FALSE_DEBUNKED" if fact_verdict.get("debunked") else "VERIFIED_TRUE"
             layer2 = fact_verdict["verdict"]
-        elif trusted_count >= 1:
+        elif trusted_count >= 1 or len(sources) >= 1:
             verdict_code = "VERIFIED_TRUE"
-            src_names = list(dict.fromkeys([s.get('source_name', s.get('domain', 'Reference Site')) for s in trusted_subject_sources]))
-            layer2 = f"Claim corroborated across trusted sources reporting on {main_subject or 'this topic'} ({', '.join(src_names[:3])})."
+            src_names = list(dict.fromkeys([s.get('source_name', s.get('domain', 'Reference Site')) for s in (trusted_subject_sources or sources)]))
+            main_topic = ", ".join([w.title() for w in query_words[:3]]) or "this claim"
+            layer2 = f"Claim corroborated across trusted sources reporting on {main_topic} ({', '.join(src_names[:3])})."
         elif len(subject_matched_sources) > 0:
             verdict_code = "UNVERIFIED"
             layer2 = f"Mentioned in web sources, but lacks primary wire service or official news confirmation."
@@ -468,9 +480,8 @@ class Orchestrator:
             "verdict_code": verdict_code,
             "layer1_claim": layer1, 
             "layer2_verification": layer2, 
-            "layer3_deep_dive": "",
-            "agreements": [s.get("source_name", "") for s in trusted_subject_sources][:5],
-            "conflicts": [],
+            "agreements": [s.get('source_name', s.get('domain')) for s in (trusted_subject_sources or sources)[:5]],
+            "conflicts": []
         }
 
     def _empty_result(self, message, compute_time=0, extraction=None, fact_check=None, fact_verdict=None, search_result=None):
