@@ -95,14 +95,14 @@ export default function ResultHero({ result }) {
             {themeConfig.verdictTitle}
           </h3>
         </div>
-        <div className="flex items-center gap-2 text-xs font-semibold px-3 py-1 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-slate-800 dark:text-slate-200">
-          <span>Confidence:</span>
+        <div className="flex items-center gap-2 text-xs font-semibold px-3 py-1 rounded-full bg-white/10 border border-white/15 text-slate-100">
+          <span className="text-slate-300">Confidence:</span>
           <span className={`font-bold ${themeConfig.titleColor}`}>{themeConfig.confLevel}</span>
         </div>
       </div>
 
       {/* So-What Explanation */}
-      <p className="text-sm md:text-base font-semibold text-slate-800 dark:text-slate-200 leading-relaxed">{themeConfig.verdictSoWhat}</p>
+      <p className="text-sm md:text-base font-semibold text-slate-100 leading-relaxed">{themeConfig.verdictSoWhat}</p>
 
       {/* Mobile Collapse Toggle Button (<768px) */}
       <div className="md:hidden">
@@ -117,10 +117,10 @@ export default function ResultHero({ result }) {
       </div>
 
       {/* Why Bullets & Snapshot (Always visible on desktop, collapsible on mobile) */}
-      <div className={`${showMobileDetails ? 'flex' : 'hidden md:flex'} flex-col gap-3 pt-2 border-t border-slate-200 dark:border-white/10`}>
+      <div className={`${showMobileDetails ? 'flex' : 'hidden md:flex'} flex-col gap-3 pt-2.5 border-t border-white/10`}>
         <div className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">Why?</span>
-          <ul className="text-xs space-y-1 list-disc list-inside text-slate-700 dark:text-slate-300 font-medium">
+          <span className="text-[11px] font-extrabold uppercase tracking-wider text-sky-400">WHY?</span>
+          <ul className="text-xs space-y-1 list-disc list-inside text-slate-200 font-medium leading-relaxed">
             {themeConfig.whyBullets.map((b, i) => (
               <li key={i}>{b}</li>
             ))}
@@ -128,22 +128,22 @@ export default function ResultHero({ result }) {
         </div>
 
         {/* EVIDENCE SNAPSHOT BADGES */}
-        <div className="flex items-center gap-2 pt-2 border-t border-slate-200 dark:border-white/10 flex-wrap text-xs font-medium text-slate-700 dark:text-slate-300">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10">
+        <div className="flex items-center gap-2 pt-2 border-t border-white/10 flex-wrap text-xs font-medium text-slate-200">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 border border-white/15 text-slate-200">
             <Check className="w-3.5 h-3.5 text-primary" />
             <span>{result.metadata?.sources_retrieved || 0} Sources</span>
           </div>
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 border border-white/15 text-slate-200">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
             <span>{result.metadata?.trusted_domains_found?.length || 0} Trusted</span>
           </div>
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10">
-            <Clock className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 border border-white/15 text-slate-200">
+            <Clock className="w-3.5 h-3.5 text-slate-400" />
             <span>Checked just now</span>
           </div>
           {result.system_metadata?.model_used && (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/10 border border-primary/20 text-primary-light">
-              <Cpu className="w-3.5 h-3.5" />
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/20 border border-primary/30 text-sky-300">
+              <Cpu className="w-3.5 h-3.5 text-primary" />
               <span>
                 {result.system_metadata.fallback_used
                   ? "Tier 4 CPU Grounded Mode (No-LLM)"
@@ -155,7 +155,7 @@ export default function ResultHero({ result }) {
 
         {/* INLINE UNVERIFIED NOTE */}
         {(themeConfig.verdictTitle === "UNVERIFIED" || themeConfig.verdictTitle === "INSUFFICIENT EVIDENCE") && (
-          <div className="text-xs text-slate-700 dark:text-slate-300/90 font-normal pt-2 border-t border-slate-200 dark:border-white/10 flex items-start gap-2 leading-relaxed">
+          <div className="text-xs text-slate-300 font-normal pt-2 border-t border-white/10 flex items-start gap-2 leading-relaxed">
             <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
             <span>
               <strong>Unverified</strong> means no reliable evidence currently confirms the claim. It does <em>not</em> necessarily mean the claim is false. Confidence reflects available evidence quantity—not truth value.
