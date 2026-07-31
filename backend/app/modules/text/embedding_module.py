@@ -2,6 +2,11 @@
 Embedding Module.
 Uses sentence-transformers for semantic similarity, dedup, and conflict detection.
 Model: all-MiniLM-L6-v2 (384-dim, fast, free, runs on CPU).
+
+PERF-01 FIX: This module previously lazy-loaded its own SentenceTransformer instance,
+creating a potential THIRD copy of the same model in memory (alongside evidence_ranker.py
+and cache_service.py). It now delegates to the shared embedding_singleton so all three
+consumers share exactly one in-memory instance (~90MB).
 """
 import numpy as np
 from ...utils.logger import log
@@ -10,25 +15,19 @@ from ...utils.logger import log
 class EmbeddingModel:
     """
     Sentence embedding model for semantic operations.
-    Lazy-loads the model on first use to avoid startup delay.
+    Delegates to the centralized embedding singleton (lazy-loaded on first use).
+    All encode/similarity methods are API-compatible with the original implementation.
     """
-
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
-        self.model_name = model_name
-        self._model = None
 
     @property
     def model(self):
-        """Lazy load the model."""
-        if self._model is None:
-            try:
-                from sentence_transformers import SentenceTransformer
-                self._model = SentenceTransformer(self.model_name)
-                log.info(f"Embedding model '{self.model_name}' loaded.")
-            except Exception as e:
-                log.error(f"Failed to load embedding model: {e}")
-                raise RuntimeError(f"Embedding model load failed: {e}")
-        return self._model
+        """Returns the shared singleton model instance."""
+        try:
+            from app.services.embedding_singleton import get_embedding_model
+            return get_embedding_model()
+        except Exception as e:
+            log.error(f"[EmbeddingModel] Could not retrieve embedding singleton: {e}")
+            return None
 
     def encode(self, text: str) -> np.ndarray:
         """Encode a single text into embedding vector."""
