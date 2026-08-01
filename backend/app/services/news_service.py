@@ -11,7 +11,11 @@ Search Priority (Intelligence Ladder):
 """
 
 import asyncio
+import re
+import string
+import html
 import httpx
+import base64
 import feedparser
 import urllib.parse
 from urllib.parse import urlparse  # EDGE-04 FIX: proper URL parsing
@@ -203,9 +207,6 @@ async def search_duckduckgo(query: str) -> list:
 # ═══════════════════════════════════════════════════════════════
 # TIER 5: Google News RSS & GDELT
 # ═══════════════════════════════════════════════════════════════
-import re
-import html
-
 def clean_html(text: str) -> str:
     """Strips raw HTML tags and unescapes entities from web snippets."""
     if not text:
@@ -213,6 +214,89 @@ def clean_html(text: str) -> str:
     clean = re.sub(r'<[^>]+>', ' ', text)
     clean = html.unescape(clean)
     return " ".join(clean.split())
+
+def unwrap_google_news_url(url: str) -> str:
+    """Follow or decode Google News RSS redirect to get actual article URL."""
+    if not url or "news.google.com" not in url:
+        return url
+
+    try:
+        match = re.search(r'/articles/([A-Za-z0-9_\-=]+)', url)
+        if match:
+            encoded = match.group(1)
+            padding = (4 - len(encoded) % 4) % 4
+            encoded_padded = encoded + ('=' * padding)
+            decoded_bytes = base64.urlsafe_b64decode(encoded_padded)
+            http_idx = decoded_bytes.find(b'http')
+            if http_idx != -1:
+                sub_bytes = decoded_bytes[http_idx:]
+                extracted_bytes = bytearray()
+                for b in sub_bytes:
+                    if 32 <= b <= 126 and chr(b) not in ' \t\r\n"\'<>':
+                        extracted_bytes.append(b)
+                    else:
+                        break
+                extracted = extracted_bytes.decode('ascii', errors='ignore')
+                if extracted.startswith("http") and "news.google.com" not in extracted:
+                    log.info(f"[URL_UNWRAP] Decoded Google RSS redirect: {url[:45]}... -> {extracted}")
+                    return extracted
+    except Exception as e:
+        log.warning(f"[URL_UNWRAP] Base64 decode error for {url[:45]}: {e}")
+
+    return url
+
+# ═══════════════════════════════════════════════════════════════
+# HYBRID URL SCRAPER: HTTPX + BEAUTIFUL SOUP + JINA AI READER
+# ═══════════════════════════════════════════════════════════════
+async def scrape_and_analyze_url(url: str, jina_api_key: str = None) -> str:
+    """
+    Extracts page contents using a hybrid strategy: attempts direct HTTPX + BeautifulSoup fetch first,
+    and falls back gracefully to Jina AI Reader if direct fetch fails or encounters bot protections.
+    """
+    if not url:
+        return ""
+
+    url = unwrap_google_news_url(url)
+
+    # Strategy A: Direct low-overhead HTTPX fetch + BeautifulSoup
+    try:
+        log.info(f"[NETWORK_CALL] Attempting direct fetch: {url}")
+        async with _get_httpx_client(5.0) as client:
+            res = await client.get(url)
+            if res.status_code == 200 and len(res.text) > 300:
+                try:
+                    from bs4 import BeautifulSoup
+                    soup = BeautifulSoup(res.text, "html.parser")
+                    for element in soup(["script", "style", "nav", "footer", "header", "aside"]):
+                        element.decompose()
+                    clean_text = " ".join(soup.get_text().split())[:1500]
+                    if len(clean_text) > 100:
+                        log.info(f"[SCRAPE_SUCCESS] Direct fetch completed for: {url}")
+                        return clean_text
+                except ImportError:
+                    clean_text = clean_html(res.text)[:1500]
+                    log.info(f"[SCRAPE_SUCCESS] Direct text extraction completed for: {url}")
+                    return clean_text
+    except Exception as e:
+        log.warning(f"[SCRAPE_RETRY] Direct fetch failed for {url}: {str(e)}. Shifting to Jina AI Reader.")
+
+    # Strategy B: Resilient proxy-pass via Jina AI Reader
+    jina_url = f"https://r.jina.ai/{url}"
+    jina_headers = {"User-Agent": _get_browser_headers()["User-Agent"]}
+    if jina_api_key:
+        jina_headers["Authorization"] = f"Bearer {jina_api_key}"
+
+    try:
+        log.info(f"[NETWORK_CALL] Routing through Jina AI Reader: {jina_url}")
+        jina_client = _get_httpx_client(8.0)
+        res = await jina_client.get(jina_url, headers=jina_headers)
+        if res.status_code == 200 and len(res.text) > 100:
+            log.info(f"[SCRAPE_SUCCESS] Jina AI extraction completed for: {url}")
+            return res.text[:2000]
+    except Exception as e:
+        log.error(f"[SCRAPE_CRITICAL_FAIL] Both scrapers failed for {url}: {str(e)}")
+
+    return ""
 
 async def search_google_news_rss(query: str) -> list:
     """Tier 5: Google News RSS with async destination URL unwrapping."""
@@ -408,35 +492,84 @@ async def search_tavily(query: str, trusted_only: bool = False):
 # ═══════════════════════════════════════════════════════════════
 # GDELT v2 Project Global News Search
 # ═══════════════════════════════════════════════════════════════
+def _prepare_gdelt_query(raw_query: str) -> str:
+    """
+    DEDUPLICATION STEP: Strips question prefixes, isolates keywords, 
+    and applies strict double-quoting rules to prevent GDELT API syntax crashes.
+    """
+    cleaned_terms = extract_search_keywords(raw_query)
+    tokens = re.findall(r'\b[a-zA-Z0-9\-\.]{3,}\b', cleaned_terms)
+    if not tokens:
+        return ""
+    # Format as space-separated quoted boolean terms: '"term1" "term2"'
+    return " ".join([f'"{t}"' for t in tokens[:4]])
+
 async def search_gdelt(query: str, max_results: int = 5):
-    """Query GDELT v2 Project API for international news articles."""
-    safe_query = query[:200].replace('"', '')
+    """Query GDELT v2 Project API for international news articles with structured error isolation."""
+    gdelt_query = _prepare_gdelt_query(query)
+    if not gdelt_query:
+        return []
 
     async def _call():
-        async with _get_httpx_client(15.0) as client:
-            resp = await client.get(
-                "https://api.gdeltproject.org/api/v2/doc/doc",
-                params={
-                    "query": safe_query,
-                    "mode": "artlist",
-                    "maxrecords": max_results,
-                    "format": "json",
-                    "sort": "date"
-                }
-            )
-            if resp.status_code != 200:
-                return []
-            data = resp.json().get("articles", [])
-            return [{
-                "url": a.get("url", ""),
-                "title": a.get("title", ""),
-                "snippet": f"Source: {a.get('domain', '')} - Published: {a.get('seendate', '')}",
-                "source_name": a.get("domain", "GDELT Global News"),
-                "channel": "gdelt",
-                "retrieval_tier": "tier_4"
-            } for a in data if a.get("url")]
+        log.info(f"[NETWORK_CALL] [PROVIDER_CALL] Querying GDELT API with: {gdelt_query}")
+        try:
+            async with _get_httpx_client(6.0) as client:
+                resp = await client.get(
+                    "https://api.gdeltproject.org/api/v2/doc/doc",
+                    params={
+                        "query": gdelt_query,
+                        "mode": "artlist",
+                        "maxrecords": str(max_results),
+                        "format": "json",
+                        "sort": "date",
+                        "timespan": "30d"
+                    }
+                )
+                if resp.status_code in (429, 403, 503):
+                    log.warning(f"[PROVIDER_DOWN] GDELT API returned status {resp.status_code}. Degrading gracefully.")
+                    return []
+                elif resp.status_code != 200:
+                    log.warning(f"[PROVIDER_DOWN] GDELT responded with status code: {resp.status_code}")
+                    return []
 
-    return await circuit_gdelt.call(_call) or []
+                try:
+                    data = resp.json()
+                except Exception:
+                    return []
+
+                articles = data.get("articles", [])
+                log.info(f"[PROVIDER_SUCCESS] GDELT returned {len(articles)} entries.")
+                
+                results = []
+                for a in articles:
+                    raw_url = a.get("url", "")
+                    if not raw_url:
+                        continue
+                    domain = a.get("domain", "").lower().replace("www.", "").strip()
+                    if not domain and "/" in raw_url:
+                        try:
+                            domain = urllib.parse.urlparse(raw_url).netloc.replace("www.", "").lower()
+                        except Exception:
+                            domain = "gdelt_unmapped"
+                    results.append({
+                        "url": raw_url,
+                        "domain": domain or "gdelt_unmapped",
+                        "title": clean_html(a.get("title", "Untitled GDELT Entry")),
+                        "snippet": f"Source: {domain or 'GDELT'} - Date: {a.get('seendate', 'Recent')}",
+                        "source_name": domain.title() if domain and domain != "gdelt_unmapped" else "GDELT Global News",
+                        "channel": "gdelt",
+                        "retrieval_tier": "tier_4"
+                    })
+                return results
+        except Exception as exc:
+            log.warning(f"[PROVIDER_DOWN] GDELT fetch degraded ({type(exc).__name__}). Continuing search ladder.")
+            return []
+
+    try:
+        return await circuit_gdelt.call(_call) or []
+    except Exception as e:
+        log.error(f"[PROVIDER_TIMEOUT] GDELT API endpoint failed: {str(e)}")
+        return []
 
 # ═══════════════════════════════════════════════════════════════
 # RESCUE PLAN ORCHESTRATION 

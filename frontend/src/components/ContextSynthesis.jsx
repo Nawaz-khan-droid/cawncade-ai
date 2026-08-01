@@ -43,6 +43,16 @@ export default function ContextSynthesis({ summary, isLoading }) {
     .replace(/Reasoning:\s*The deep-check engine is currently unavailable\.?\s*/gi, '')
     .replace(/Initial data snippet:\s*/gi, '')
     .replace(/Make sure formatting matches[\s\S]*/gi, '')
+    .replace(/###\s*(?:📊\s*)?Local Computational Evidence Verification[\s\S]*?(?=\n\n|\Z)/gi, '')
+    .replace(/Notice:\s*Online AI LLM reasoning was unavailable[\s\S]*?\.\s*/gi, '')
+    .replace(/\*\*Grounded Deterministic Verdict\*\*:[\s\S]*?\n/gi, '')
+    .replace(/-\s*\*\*Entity Overlap Match\*\*[\s\S]*?\n/gi, '')
+    .replace(/Hybrid BM25 \+ MiniLM Ranked Evidence Sentences:\s*/gi, '')
+    .replace(/Grounded Entities Detected:\s*/gi, '')
+    .replace(/Evidence Grounding:\s*Cross-referenced[^\n]*/gi, '')
+    .replace(/\[(?:SUPPORTS|CONTRADICTS|NEUTRAL|PARTIAL)\]\s*/gi, '')
+    .replace(/\*\(Match Score:\s*[\d.]+\)\*/gi, '')
+    .replace(/\(Match Score:\s*[\d.]+\)/gi, '')
     // Fix broken newline domain list items: "- \n reuters.com" -> "- https://reuters.com"
     .replace(/-\s*\n\s*([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '- https://$1');
 

@@ -106,18 +106,28 @@ for domain in DISCUSSION_PLATFORMS:
 
 def get_trust_info(domain: str) -> dict:
     """Get trust tier and scoring multiplier for a domain."""
-    clean = domain.lower().replace("www.", "")
-    # muslimmirror wildcard match
+    if not domain:
+        return {"tier": 0, "label": "unknown", "multiplier": 0.4}
+    clean = domain.lower().replace("www.", "").strip()
     if "muslimmirror.com" in clean:
         return {"tier": 4, "label": "specialized", "multiplier": 0.6}
-    # Handle subdomain matching (e.g., apnews.com/APFactCheck -> apnews.com)
-    parts = clean.split(".")
-    if len(parts) > 2:
-        base = ".".join(parts[-2:])
-        if base in DOMAIN_TRUST_MAP:
-            return DOMAIN_TRUST_MAP[base]
+
+    # Direct match first
     if clean in DOMAIN_TRUST_MAP:
         return DOMAIN_TRUST_MAP[clean]
+
+    # Handle subdomains & multi-part TLDs (e.g. news.bbc.co.uk -> bbc.co.uk or edition.cnn.com -> cnn.com)
+    parts = clean.split(".")
+    if len(parts) >= 3:
+        # Check last 3 parts (e.g. bbc.co.uk)
+        last3 = ".".join(parts[-3:])
+        if last3 in DOMAIN_TRUST_MAP:
+            return DOMAIN_TRUST_MAP[last3]
+        # Check last 2 parts (e.g. cnn.com)
+        last2 = ".".join(parts[-2:])
+        if last2 in DOMAIN_TRUST_MAP:
+            return DOMAIN_TRUST_MAP[last2]
+
     return {"tier": 0, "label": "unknown", "multiplier": 0.4}
 
 

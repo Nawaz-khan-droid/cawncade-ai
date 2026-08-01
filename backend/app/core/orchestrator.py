@@ -326,14 +326,26 @@ class Orchestrator:
         # Step 5: Compute aggregate scores
         scores = scoring_engine.compute_score(query, sources)
 
-        # Step 7: Build synthesis
-        synthesis = self._build_synthesis(query, sources, scores, fact_verdict, extraction_meta, trusted_domains_found, search_result.get("tier_stats", {}))
+        # Step 6: Conflict Isolation
+        from app.services.tier4.verification_service import tier4_verification_service
+        sanitized_sources = tier4_verification_service.cross_validate_and_sanitize(sources)
 
-        # Step 8: Phase 3 - Agent Deep Dive (optional, runs in parallel with synthesis)
+        # Step 7: Build synthesis
+        synthesis = self._build_synthesis(query, sanitized_sources, scores, fact_verdict, extraction_meta, trusted_domains_found, search_result.get("tier_stats", {}))
+
+        # Step 8: Phase 3 - Agent Deep Dive with Hybrid URL Scraping (HTTPX + Jina AI Reader)
         agent_report = ""
         try:
-            clean_snippets = [re.sub(r'<[^>]+>', ' ', s.get('snippet', '')) for s in sources[:5]]
-            evidence_context = "\n".join([f"- {s.get('title', '')}: {clean_snippets[i][:200]}" for i, s in enumerate(sources[:5])])
+            clean_snippets = [re.sub(r'<[^>]+>', ' ', s.get('snippet', '')) for s in sanitized_sources[:5]]
+            evidence_context = "\n".join([f"- {s.get('title', '')}: {clean_snippets[i][:200]}" for i, s in enumerate(sanitized_sources[:5])])
+
+            # Deep Page Extraction on top target URL
+            if sanitized_sources and sanitized_sources[0].get("url"):
+                top_url = sanitized_sources[0].get("url")
+                from app.services.news_service import scrape_and_analyze_url
+                deep_text = await scrape_and_analyze_url(top_url)
+                if deep_text:
+                    evidence_context += f"\n\n--- DEEP PAGE EXTRACTED CONTENT ({sanitized_sources[0].get('source_name', 'Top Source')}) ---\n{deep_text[:800]}\n----------------------------"
             
             # Phase 4: Inject Image OCR Text & Metadata Tampering Flags directly into the ReAct loop
             if image_metadata:
@@ -351,12 +363,12 @@ class Orchestrator:
             else:
                 log.info("[Orchestrator] LLM deep-dive returned empty. Engaging offline_nlp_service.")
                 from app.services.offline_nlp_service import offline_nlp_service
-                agent_report = offline_nlp_service.generate_report(query, evidence_context, sources_count=len(sources))
+                agent_report = offline_nlp_service.generate_report(query, evidence_context, sources_count=len(sanitized_sources))
                 synthesis["layer3_deep_dive"] = agent_report
         except Exception as e:
             log.warning(f"[Orchestrator] Agent deep-dive failed: {e}. Engaging offline_nlp_service fallback.")
             from app.services.offline_nlp_service import offline_nlp_service
-            agent_report = offline_nlp_service.generate_report(query, evidence_context, sources_count=len(sources))
+            agent_report = offline_nlp_service.generate_report(query, evidence_context, sources_count=len(sanitized_sources))
             synthesis["layer3_deep_dive"] = agent_report
 
         compute_time = int((time.time() - start_time) * 1000)
@@ -451,19 +463,63 @@ class Orchestrator:
         }
         query_words = [w.lower() for w in re.findall(r'\b[A-Za-z]{3,}\b', query) if w.lower() not in stop_words]
 
-        # Match sources containing ANY key entity/keyword from the query
+        # Match sources containing primary subject entity from the query (e.g. bitcoin, modi, nasa, taylor, openai)
+        query_nouns = [w.lower() for w in re.findall(r'\b[A-Za-z0-9]{3,}\b', query) if w.lower() not in stop_words]
+        primary_entity = query_nouns[0] if query_nouns else ""
+
         subject_matched_sources = []
         for s in sources:
             text = (s.get("title", "") + " " + s.get("snippet", "") + " " + s.get("source_name", "")).lower()
-            if not query_words or any(qw in text for qw in query_words):
+            if not primary_entity or primary_entity in text:
                 subject_matched_sources.append(s)
 
         trusted_subject_sources = [s for s in subject_matched_sources if s.get("is_trusted_domain")]
         trusted_count = len(trusted_subject_sources)
 
+        all_text = " ".join([s.get("title", "") + " " + s.get("snippet", "") for s in (trusted_subject_sources or sources)]).lower()
+        title_text = " ".join([s.get("title", "") for s in (trusted_subject_sources or sources)]).lower()
+
+        debunk_keywords = {"false", "myth", "hoax", "fake", "debunk", "debunked", "untrue", "misleading", "no evidence", "disproven", "incorrect", "has not", "did not", "not true", "refutes"}
+        unfulfilled_milestone_keywords = {"closes in", "nears", "approaches", "yet to", "before hitting", "aims for", "will hit", "is set to", "expected to"}
+
+        is_debunked = any(dk in all_text for dk in debunk_keywords)
+
+        corroboration_verbs = [
+            "inaugurat", "releas", "detect", "became", "launch", "announc", 
+            "surpass", "billionaire", "confirm", "achiev", "complet", "won",
+            "pass", "sign", "arriv", "land", "publish", "reveal", "award",
+            "broke", "reach", "exceed", "cross", "top", "climb", "set a new",
+            "hits", "makes", "becomes", "earn", "win", "take", "claim"
+        ]
+        has_title_corroboration = any(
+            any(verb in s.get("title", "").lower() for verb in corroboration_verbs)
+            for s in (trusted_subject_sources or sources)
+        )
+
+        milestone_verbs = [
+            "reached", "hit", "surpassed", "cures", "cured", "inaugurated", 
+            "released", "exceeded", "broke", "achieved", "passed", "crossed",
+            "topped", "climbed", "rose"
+        ]
+        query_lower = query.lower()
+        asserts_completed_event = any(kw in query_lower for kw in milestone_verbs)
+        is_unfulfilled_milestone = (
+            asserts_completed_event 
+            and any(mk in all_text for mk in unfulfilled_milestone_keywords)
+            and not has_title_corroboration
+        )
+
         if fact_verdict.get("verdict") and "No prior" not in fact_verdict.get("verdict", ""):
-            verdict_code = "FALSE_DEBUNKED" if fact_verdict.get("debunked") else "VERIFIED_TRUE"
+            v_text = fact_verdict.get("verdict", "").lower()
+            is_fact_debunked = fact_verdict.get("debunked", False) or any(dk in v_text for dk in debunk_keywords)
+            verdict_code = "FALSE_DEBUNKED" if is_fact_debunked else "VERIFIED_TRUE"
             layer2 = fact_verdict["verdict"]
+        elif is_debunked:
+            verdict_code = "FALSE_DEBUNKED"
+            layer2 = f"Claim identified as false or debunked across authoritative news reporting on {query[:80]}."
+        elif is_unfulfilled_milestone:
+            verdict_code = "FALSE_DEBUNKED"
+            layer2 = f"Claim asserts a milestone was reached, but current reporting indicates it is only approaching or projected ('{query[:80]}')."
         elif trusted_count >= 1 or len(sources) >= 1:
             verdict_code = "VERIFIED_TRUE"
             src_names = list(dict.fromkeys([s.get('source_name', s.get('domain', 'Reference Site')) for s in (trusted_subject_sources or sources)]))

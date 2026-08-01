@@ -36,7 +36,8 @@ class CircuitBreaker:
             self._on_success()
             return result
         except Exception as e:
-            self._on_failure(str(e))
+            err_msg = str(e) if str(e).strip() else f"{type(e).__name__}: {repr(e)}"
+            self._on_failure(err_msg)
             return None
 
     def _on_success(self):
@@ -80,19 +81,27 @@ class CircuitBreaker:
         }
 
 
-circuit_google_search = CircuitBreaker("google_search", failure_threshold=3, reset_timeout=600)
-circuit_tavily = CircuitBreaker("tavily", failure_threshold=3, reset_timeout=600)
-circuit_fact_check = CircuitBreaker("fact_check", failure_threshold=3, reset_timeout=600)
-circuit_safe_browsing = CircuitBreaker("safe_browsing", failure_threshold=5, reset_timeout=900)
-circuit_newsapi = CircuitBreaker("newsapi", failure_threshold=3, reset_timeout=600)
-circuit_newsdata = CircuitBreaker("newsdata", failure_threshold=3, reset_timeout=600)
-circuit_youtube = CircuitBreaker("youtube", failure_threshold=5, reset_timeout=900)
-circuit_vision = CircuitBreaker("vision", failure_threshold=3, reset_timeout=600)
-circuit_gdelt = CircuitBreaker("gdelt", failure_threshold=5, reset_timeout=600)
-circuit_google_news = CircuitBreaker("google_news", failure_threshold=5, reset_timeout=600)
-circuit_agent = CircuitBreaker("llm_agent", failure_threshold=3, reset_timeout=600)
-# REFACTOR-04 FIX: Dedicated circuit breaker for You.com (independent of Tavily)
-circuit_you_com = CircuitBreaker("you_com", failure_threshold=3, reset_timeout=600)
+circuit_google_search = CircuitBreaker("google_search", failure_threshold=3, reset_timeout=60)
+circuit_tavily = CircuitBreaker("tavily", failure_threshold=3, reset_timeout=60)
+circuit_fact_check = CircuitBreaker("fact_check", failure_threshold=3, reset_timeout=60)
+circuit_safe_browsing = CircuitBreaker("safe_browsing", failure_threshold=5, reset_timeout=60)
+circuit_newsapi = CircuitBreaker("newsapi", failure_threshold=3, reset_timeout=60)
+circuit_newsdata = CircuitBreaker("newsdata", failure_threshold=3, reset_timeout=60)
+circuit_youtube = CircuitBreaker("youtube", failure_threshold=5, reset_timeout=60)
+circuit_vision = CircuitBreaker("vision", failure_threshold=3, reset_timeout=60)
+circuit_gdelt = CircuitBreaker("gdelt", failure_threshold=5, reset_timeout=60)
+circuit_google_news = CircuitBreaker("google_news", failure_threshold=5, reset_timeout=60)
+circuit_agent = CircuitBreaker("llm_agent", failure_threshold=3, reset_timeout=60)
+circuit_you_com = CircuitBreaker("you_com", failure_threshold=3, reset_timeout=60)
+
+def reset_all_circuits():
+    """Resets all circuit breakers to CLOSED state."""
+    for b in [
+        circuit_google_search, circuit_tavily, circuit_you_com, circuit_fact_check,
+        circuit_newsdata, circuit_youtube, circuit_gdelt,
+        circuit_google_news, circuit_agent
+    ]:
+        b.force_reset()
 
 def get_all_circuit_breaker_telemetry() -> dict:
     """Returns real-time status & error telemetry across all search & LLM provider circuit breakers."""
