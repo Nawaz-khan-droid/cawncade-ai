@@ -1,0 +1,96 @@
+[
+  {
+    "genre": "Politics/News",
+    "claim": "Narendra Modi inaugurated the Chenab Rail Bridge in Kashmir",
+    "status": "PASS",
+    "verdict": "VERIFIED_TRUE",
+    "confidence": 0.654,
+    "latency_ms": 28821,
+    "sources_count": 5,
+    "trusted_domains": [
+      "thehindu.com",
+      "The Times Of India",
+      "bbc.com"
+    ],
+    "llm_tier": "tier_2_hf_router",
+    "summary_preview": "- - PM Modi inaugurates world\u2019s highest rail bridge over Chenab river in J&K: PM Modi inaugurates world\u2019s highest rail bridge over Chenab river in J&K The Hindu\n- - J&K: PM Narendra Modi inaugurates w"
+  },
+  {
+    "genre": "Health/Medical",
+    "claim": "Drinking hot lemon water cures COVID-19 and cancer",
+    "status": "PASS",
+    "verdict": "VERIFIED_TRUE",
+    "confidence": 0.415,
+    "latency_ms": 16057,
+    "sources_count": 8,
+    "trusted_domains": [
+      "reuters.com",
+      "snopes.com"
+    ],
+    "llm_tier": "tier_2_hf_router",
+    "summary_preview": "- Retrieved news sources discuss Drinking and corroborate key claim details."
+  },
+  {
+    "genre": "Science/Space",
+    "claim": "NASA James Webb Telescope detected atmospheric water vapor on exoplanet K2-18b",
+    "status": "PASS",
+    "verdict": "VERIFIED_TRUE",
+    "confidence": 0.7511,
+    "latency_ms": 15415,
+    "sources_count": 9,
+    "trusted_domains": [
+      "nasa.gov",
+      "en.wikipedia.org",
+      "science.nasa.gov",
+      "bbc.com"
+    ],
+    "llm_tier": "tier_2_hf_router",
+    "summary_preview": "- - Hubble Finds Water Vapor on Habitable-Zone Exoplanet for First Time: Hubble Finds Water Vapor on Habitable-Zone Exoplanet for First Time NASA Science (\n- NASA Search Suggested Searches Climate Cha"
+  },
+  {
+    "genre": "Entertainment",
+    "claim": "Taylor Swift became a billionaire following The Eras Tour",
+    "status": "PASS",
+    "verdict": "VERIFIED_TRUE",
+    "confidence": 0.75,
+    "latency_ms": 8653,
+    "sources_count": 4,
+    "trusted_domains": [
+      "The Economic Times",
+      "Business Insider",
+      "indianexpress.com"
+    ],
+    "llm_tier": "tier_2_hf_router",
+    "summary_preview": "- - The life of a billionaire: Taylor Swift adds another $1 billion to her net worth in just 2 years\n- Here\u2019s how rich she is now: The life of a billionaire: Taylor Swift adds another $1 billion to he"
+  },
+  {
+    "genre": "Finance/Crypto",
+    "claim": "Bitcoin reached a new all-time high above 100,000 dollars",
+    "status": "PASS",
+    "verdict": "FALSE_DEBUNKED",
+    "confidence": 0.4833,
+    "latency_ms": 15548,
+    "sources_count": 6,
+    "trusted_domains": [
+      "Bollywood Hungama",
+      "Kota Territory News"
+    ],
+    "llm_tier": "tier_2_hf_router",
+    "summary_preview": "- - Bitcoin closes in on $100,000 in surprise surge: Bitcoin closes in on $100,000 in surprise surge fortune\n- - Will Bitcoin Hit $100K in 2026?: Will Bitcoin Hit $100K in 2026? bitcoinfoundation\n- - "
+  },
+  {
+    "genre": "Tech/AI",
+    "claim": "OpenAI released GPT-4o with real-time voice and vision capabilities",
+    "status": "PASS",
+    "verdict": "VERIFIED_TRUE",
+    "confidence": 0.6967,
+    "latency_ms": 15439,
+    "sources_count": 3,
+    "trusted_domains": [
+      "Openai",
+      "Mashable"
+    ],
+    "llm_tier": "tier_2_hf_router",
+    "summary_preview": "- - When will OpenAI's GPT-4o be available to try?: When will OpenAI's GPT-4o be available to try? Mashable\n- - Introducing gpt-realtime and Realtime API updates for production voice agents: Introduci"
+  }
+]

@@ -1,0 +1,47 @@
+{
+    "timestamp": "2026-10-08T20:09:35.873052",
+    "accuracy": 0.0,
+    "total_tested": 5,
+    "results": [
+        {
+            "claim": "Isaac Newton discovered gravity after an apple fell on his head.",
+            "expected": "FALSE_DEBUNKED",
+            "actual": "UNKNOWN",
+            "latency_seconds": 48.35,
+            "success": false,
+            "explanation": "..."
+        },
+        {
+            "claim": "Joe Biden won the 2020 US Presidential Election.",
+            "expected": "VERIFIED_TRUE",
+            "actual": "UNKNOWN",
+            "latency_seconds": 22.15,
+            "success": false,
+            "explanation": "..."
+        },
+        {
+            "claim": "The Great Wall of China is visible from the Moon with the naked eye.",
+            "expected": "FALSE_DEBUNKED",
+            "actual": "UNKNOWN",
+            "latency_seconds": 21.96,
+            "success": false,
+            "explanation": "..."
+        },
+        {
+            "claim": "NASA discovered active microbial bacteria on Mars in 2024.",
+            "expected": "FALSE_DEBUNKED",
+            "actual": "UNKNOWN",
+            "latency_seconds": 22.69,
+            "success": false,
+            "explanation": "..."
+        },
+        {
+            "claim": "Water boils at 100 degrees Celsius at standard atmospheric pressure.",
+            "expected": "VERIFIED_TRUE",
+            "actual": "UNKNOWN",
+            "latency_seconds": 17.0,
+            "success": false,
+            "explanation": "..."
+        }
+    ]
+}

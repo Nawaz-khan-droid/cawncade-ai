@@ -15,7 +15,7 @@ import asyncio
 from app.services.news_service import tiered_search, verify_against_trusted
 from app.services.fact_check_service import check_claim, get_verdict_from_claims
 from app.services.safe_browsing_service import check_url
-from app.services.agent_service import cawncade_agent
+
 from app.services.youtube_service import analyze_youtube, is_youtube_url
 from app.services.vision_service import analyze_image
 from app.modules.extraction.extractor import content_extractor
@@ -326,44 +326,77 @@ class Orchestrator:
         # Step 5: Compute aggregate scores
         scores = scoring_engine.compute_score(query, sources)
 
-        # Step 7: Build synthesis
-        synthesis = self._build_synthesis(query, sources, scores, fact_verdict, extraction_meta, trusted_domains_found, search_result.get("tier_stats", {}))
+        # Step 6: Conflict Isolation
+        from app.services.tier4.verification_service import tier4_verification_service
+        sanitized_sources = tier4_verification_service.cross_validate_and_sanitize(sources)
 
-        # Step 8: Phase 3 - Agent Deep Dive (optional, runs in parallel with synthesis)
+        # Step 7: Build synthesis
+        synthesis = self._build_synthesis(query, sanitized_sources, scores, fact_verdict, extraction_meta, trusted_domains_found, search_result.get("tier_stats", {}))
+
+        # Step 8: Phase 3 - Agent Deep Dive with Hybrid URL Scraping (HTTPX + Jina AI Reader)
         agent_report = ""
         try:
-            clean_snippets = [re.sub(r'<[^>]+>', ' ', s.get('snippet', '')) for s in sources[:5]]
-            evidence_context = "\n".join([f"- {s.get('title', '')}: {clean_snippets[i][:200]}" for i, s in enumerate(sources[:5])])
+            clean_snippets = [re.sub(r'<[^>]+>', ' ', s.get('snippet', '')) for s in sanitized_sources[:5]]
+            evidence_context = "\n".join([f"- {s.get('title', '')}: {clean_snippets[i][:200]}" for i, s in enumerate(sanitized_sources[:5])])
+
+            # Deep Page Extraction on top target URL
+            if sanitized_sources and sanitized_sources[0].get("url"):
+                top_url = sanitized_sources[0].get("url")
+                from app.services.news_service import scrape_and_analyze_url
+                deep_text = await scrape_and_analyze_url(top_url)
+                if deep_text:
+                    evidence_context += f"\n\n--- DEEP PAGE EXTRACTED CONTENT ({sanitized_sources[0].get('source_name', 'Top Source')}) ---\n{deep_text[:800]}\n----------------------------"
             
             # Phase 4: Inject Image OCR Text & Metadata Tampering Flags directly into the ReAct loop
             if image_metadata:
                 image_injection = f"--- IMAGE ANALYSIS DATA ---\n{image_metadata}\n[EXTRACTED OCR TEXT]: {input_text}\n---------------------------\n\n"
                 evidence_context = image_injection + evidence_context
                 
-            agent_report = await cawncade_agent.run_investigation(query, evidence_context)
-            if agent_report and len(agent_report) > 100:
-                synthesis["layer3_deep_dive"] = agent_report
-                log.info(f"[Orchestrator] Agent deep-dive: {len(agent_report)} chars")
+            # Adaptive Corrective RAG (CRAG) Pipeline
+            from app.services.crag_pipeline import crag_pipeline
+            # Pass initial dense retrieval results straight to the CRAG Evaluator Node
+            crag_report = await crag_pipeline.execute_crag(query, initial_documents=sources)
+            
+            if crag_report and crag_report.get("layer2_verification"):
+                synthesis["layer3_deep_dive"] = crag_report["layer2_verification"]
+                synthesis["verdict_code"] = crag_report.get("verdict_code", synthesis["verdict_code"])
+                synthesis["confidence_score"] = crag_report.get("confidence_score", synthesis.get("confidence_score", 0.0))
+                log.info(f"[Orchestrator] CRAG Engine synthesis complete.")
                 
-                # Save researched claim to FAISS semantic cache
+                # Save researched claim to semantic cache
                 from app.services.cache_service import semantic_cache
-                semantic_cache.update_cache(query, agent_report)
+                semantic_cache.update_cache(query, crag_report["layer2_verification"])
             else:
-                log.info("[Orchestrator] LLM deep-dive returned empty. Engaging offline_nlp_service.")
+                log.info("[Orchestrator] CRAG deep-dive returned empty. Engaging offline_nlp_service.")
                 from app.services.offline_nlp_service import offline_nlp_service
-                agent_report = offline_nlp_service.generate_report(query, evidence_context, sources_count=len(sources))
+                agent_report = offline_nlp_service.generate_report(query, evidence_context, sources_count=len(sanitized_sources))
                 synthesis["layer3_deep_dive"] = agent_report
         except Exception as e:
             log.warning(f"[Orchestrator] Agent deep-dive failed: {e}. Engaging offline_nlp_service fallback.")
             from app.services.offline_nlp_service import offline_nlp_service
-            agent_report = offline_nlp_service.generate_report(query, evidence_context, sources_count=len(sources))
+            agent_report = offline_nlp_service.generate_report(query, evidence_context, sources_count=len(sanitized_sources))
             synthesis["layer3_deep_dive"] = agent_report
 
         compute_time = int((time.time() - start_time) * 1000)
 
         # Step 9: v3.5 Explainability, Dated Timeline & Smart Cost-Routing Integration
         from app.services.tier4.verification_service import tier4_verification_service
-        from app.services.agent_service import smart_claim_router
+        class SmartClaimRouter:
+            def evaluate_route(self, claim: str, entity_confidence: float, tier1_sources: int, contradiction_count: int, total_sources: int):
+                has_complex_reasoning = any(kw in claim.lower() for kw in ["why", "how", "opinion", "predict", "future", "moral", "policy impact"])
+                contradiction_ratio = contradiction_count / max(1, total_sources)
+                is_simple_factual = (
+                    not has_complex_reasoning 
+                    and entity_confidence >= 0.70 
+                    and tier1_sources >= 2 
+                    and contradiction_ratio <= 0.20
+                )
+                return {
+                    "is_simple_factual": is_simple_factual,
+                    "selected_route": "tier_4_deterministic" if is_simple_factual else "llm_reasoning",
+                    "reason": "High entity confidence & strong Tier 1 evidence agreement (0 LLM tokens used)" if is_simple_factual else "Complex claim or conflicting evidence requires LLM reasoning"
+                }
+        smart_claim_router = SmartClaimRouter()
         from app.core.resilience import get_all_circuit_breaker_telemetry
 
         explainable_data = tier4_verification_service.analyze_explainable_verification(query, sources)
@@ -380,16 +413,34 @@ class Orchestrator:
 
         # ── Telemetry Metadata Collection ──
         system_meta = {
-            "model_used": getattr(cawncade_agent, "active_model", "local_lexrank_nlp"),
-            "llm_tier": getattr(cawncade_agent, "llm_tier", "tier_4_local_nlp"),
-            "fallback_used": getattr(cawncade_agent, "fallback_used", False),
+            "model_used": getattr(crag_pipeline, "active_model", "local_lexrank_nlp"),
+            "llm_tier": getattr(crag_pipeline, "llm_tier", "tier_4_local_nlp"),
+            "fallback_used": getattr(crag_pipeline, "fallback_used", False),
             "latency_ms": compute_time,
             "smart_route": smart_route,
             "circuit_telemetry": circuit_telemetry
         }
 
+        # ── Single Source of Truth: Verdict Resolution ──────────────────────
+        # verdict_engine (via explainable_data) uses actual sentence-level stance counts
+        # from evidence_ranker and is more accurate than keyword-based synthesis.
+        # Priority:
+        #   1. If verdict_engine detected CONTRADICTED -> always use FALSE_DEBUNKED
+        #   2. If synthesis detected FALSE_DEBUNKED   -> use FALSE_DEBUNKED
+        #   3. Otherwise use synthesis verdict_code    -> VERIFIED_TRUE / UNVERIFIED
+        synthesis_verdict = synthesis.get("verdict_code", "UNVERIFIED")
+        engine_verdict = explainable_data["verdict"]  # e.g. "CONTRADICTED BY AVAILABLE EVIDENCE"
+        
+        if "CONTRADICT" in engine_verdict:
+            # Stance analysis found evidence that directly negates the claim
+            final_verdict = "FALSE_DEBUNKED"
+        elif synthesis_verdict == "FALSE_DEBUNKED":
+            final_verdict = "FALSE_DEBUNKED"
+        else:
+            final_verdict = synthesis_verdict
+
         result = {
-            "verdict": synthesis.get("verdict_code", explainable_data["verdict"]),
+            "verdict": final_verdict,
             "answer": synthesis.get("layer1_claim", ""),
             "context_summary": synthesis.get("layer2_verification", ""),
             "agent_deep_dive": synthesis.get("layer3_deep_dive", ""),
@@ -451,24 +502,94 @@ class Orchestrator:
         }
         query_words = [w.lower() for w in re.findall(r'\b[A-Za-z]{3,}\b', query) if w.lower() not in stop_words]
 
-        # Match sources containing ANY key entity/keyword from the query
+        # Match sources containing primary subject entity from the query (e.g. bitcoin, modi, nasa, taylor, openai)
+        query_nouns = [w.lower() for w in re.findall(r'\b[A-Za-z0-9]{3,}\b', query) if w.lower() not in stop_words]
+        primary_entity = query_nouns[0] if query_nouns else ""
+
         subject_matched_sources = []
         for s in sources:
             text = (s.get("title", "") + " " + s.get("snippet", "") + " " + s.get("source_name", "")).lower()
-            if not query_words or any(qw in text for qw in query_words):
+            if not primary_entity or primary_entity in text:
                 subject_matched_sources.append(s)
 
         trusted_subject_sources = [s for s in subject_matched_sources if s.get("is_trusted_domain")]
         trusted_count = len(trusted_subject_sources)
 
+        all_text = " ".join([s.get("title", "") + " " + s.get("snippet", "") for s in (trusted_subject_sources or sources)]).lower()
+        title_text = " ".join([s.get("title", "") for s in (trusted_subject_sources or sources)]).lower()
+
+        # NOTE: These are checked against all_text which is already .lower().
+        # Contraction forms ("didn't" etc.) ARE present as-is in joined text so both expanded
+        # and contracted forms are listed.
+        debunk_keywords = {
+            # Classic debunk markers
+            "false", "myth", "hoax", "fake", "debunk", "debunked",
+            "untrue", "misleading", "disproven", "incorrect", "refutes",
+            # Expanded negation forms
+            "did not", "does not", "do not", "cannot", "will not",
+            "has not", "have not", "is not", "are not", "was not", "were not",
+            "not true", "no evidence",
+            # Contraction forms (appear verbatim in article text)
+            "didn't", "doesn't", "don't", "isn't", "wasn't", "weren't",
+            "can't", "won't", "wouldn't", "couldn't", "hasn't", "haven't",
+            # Medical/health specific negation
+            "no cure", "no miracle", "no scientific evidence",
+            "not a cure", "not a treatment", "not effective", "ineffective",
+            "cannot cure", "cannot prevent", "won't cure", "doesn't cure",
+            "not proven", "fails to", "unable to", "there is no", "there are no",
+        }
+        unfulfilled_milestone_keywords = {"closes in", "nears", "approaches", "yet to", "before hitting", "aims for", "will hit", "is set to", "expected to"}
+
+        is_debunked = any(dk in all_text for dk in debunk_keywords)
+
+        corroboration_verbs = [
+            "inaugurat", "releas", "detect", "became", "launch", "announc", 
+            "surpass", "billionaire", "confirm", "achiev", "complet", "won",
+            "pass", "sign", "arriv", "land", "publish", "reveal", "award",
+            "broke", "reach", "exceed", "cross", "top", "climb", "set a new",
+            "hits", "makes", "becomes", "earn", "win", "take", "claim"
+        ]
+        has_title_corroboration = any(
+            any(verb in s.get("title", "").lower() for verb in corroboration_verbs)
+            for s in (trusted_subject_sources or sources)
+        )
+
+        milestone_verbs = [
+            "reached", "hit", "surpassed", "cures", "cured", "inaugurated", 
+            "released", "exceeded", "broke", "achieved", "passed", "crossed",
+            "topped", "climbed", "rose"
+        ]
+        query_lower = query.lower()
+        asserts_completed_event = any(kw in query_lower for kw in milestone_verbs)
+        is_unfulfilled_milestone = (
+            asserts_completed_event 
+            and any(mk in all_text for mk in unfulfilled_milestone_keywords)
+            and not has_title_corroboration
+        )
+
         if fact_verdict.get("verdict") and "No prior" not in fact_verdict.get("verdict", ""):
-            verdict_code = "FALSE_DEBUNKED" if fact_verdict.get("debunked") else "VERIFIED_TRUE"
+            v_text = fact_verdict.get("verdict", "").lower()
+            is_fact_debunked = fact_verdict.get("debunked", False) or any(dk in v_text for dk in debunk_keywords)
+            verdict_code = "FALSE_DEBUNKED" if is_fact_debunked else "VERIFIED_TRUE"
             layer2 = fact_verdict["verdict"]
+        elif is_debunked:
+            verdict_code = "FALSE_DEBUNKED"
+            layer2 = f"Claim identified as false or debunked across authoritative news reporting on {query[:80]}."
+        elif is_unfulfilled_milestone:
+            verdict_code = "FALSE_DEBUNKED"
+            layer2 = f"Claim asserts a milestone was reached, but current reporting indicates it is only approaching or projected ('{query[:80]}')."
         elif trusted_count >= 1 or len(sources) >= 1:
-            verdict_code = "VERIFIED_TRUE"
-            src_names = list(dict.fromkeys([s.get('source_name', s.get('domain', 'Reference Site')) for s in (trusted_subject_sources or sources)]))
-            main_topic = ", ".join([w.title() for w in query_words[:3]]) or "this claim"
-            layer2 = f"Claim corroborated across trusted sources reporting on {main_topic} ({', '.join(src_names[:3])})."
+            # Only emit VERIFIED_TRUE when article TITLES actively corroborate the claim event.
+            # If title corroboration is absent, sources merely discuss the topic — default to UNVERIFIED.
+            if has_title_corroboration and not is_debunked:
+                verdict_code = "VERIFIED_TRUE"
+                src_names = list(dict.fromkeys([s.get('source_name', s.get('domain', 'Reference Site')) for s in (trusted_subject_sources or sources)]))
+                main_topic = ", ".join([w.title() for w in query_words[:3]]) or "this claim"
+                layer2 = f"Claim corroborated across trusted sources reporting on {main_topic} ({', '.join(src_names[:3])}). Article headlines explicitly confirm the event."
+            else:
+                verdict_code = "UNVERIFIED"
+                src_names = list(dict.fromkeys([s.get('source_name', s.get('domain', 'Reference Site')) for s in (trusted_subject_sources or sources)]))
+                layer2 = f"Sources retrieved discuss this topic but do not explicitly confirm the claim. Insufficient title-level corroboration to verify ({', '.join(src_names[:3])})."
         elif len(subject_matched_sources) > 0:
             verdict_code = "UNVERIFIED"
             layer2 = f"Mentioned in web sources, but lacks primary wire service or official news confirmation."

@@ -9,7 +9,7 @@ from typing import Dict, Any
 class VerdictEngine:
     """Calculates grounded deterministic verdicts using mathematical confidence & sentence stance analysis."""
 
-    def calculate_verdict(self, match_stats: Dict[str, Any], sources_count: int, evidence_length: int, trusted_count: int = 0, stance_counts: Dict[str, int] = None) -> Dict[str, Any]:
+    def calculate_verdict(self, match_stats: Dict[str, Any], sources_count: int, evidence_length: int, trusted_count: int = 0, stance_counts: Dict[str, int] = None, is_unfulfilled_milestone: bool = False, is_debunked: bool = False) -> Dict[str, Any]:
         overlap_score = match_stats.get("entity_overlap_score", 0.5)
         year_conflict = match_stats.get("year_conflict", False)
         year_match = match_stats.get("year_match", True)
@@ -25,6 +25,11 @@ class VerdictEngine:
             confidence_label = "LOW"
             confidence_val = 0.10
             explanation = "No readable text evidence was retrieved to perform deterministic alignment."
+        elif is_debunked or is_unfulfilled_milestone:
+            verdict = "CONTRADICTED BY AVAILABLE EVIDENCE"
+            confidence_label = "HIGH" if (sources_count >= 2 or trusted_count > 0) else "MEDIUM"
+            confidence_val = 0.85 if trusted_count > 0 else 0.65
+            explanation = "Claim identified as unfulfilled milestone or debunked across authoritative news reporting."
         elif (n_con > 0 or year_conflict) and n_con >= n_sup:
             verdict = "CONTRADICTED BY AVAILABLE EVIDENCE"
             confidence_label = "HIGH" if (sources_count >= 2 or trusted_count > 0) else "MEDIUM"

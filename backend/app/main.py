@@ -74,7 +74,7 @@ class ChatRequest(BaseModel):
     session_id: str = "default"
 
 
-from app.services.agent_service import cawncade_chat_agent
+
 
 
 @app.post("/api/v1/chat")

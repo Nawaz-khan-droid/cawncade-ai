@@ -1,44 +1,45 @@
-"""
-Rate Limiter Module.
-In-memory rate limiting for API endpoints.
-"""
 import time
-from collections import defaultdict
+import logging
 from fastapi import HTTPException, status
-from ..config.settings import get_settings
 
-settings = get_settings()
+logger = logging.getLogger("cawncade.rate_limiter")
 
+class TokenBucketLimiter:
+    """Implements an in-memory thread-safe sliding window rate limiter."""
+    def __init__(self, capacity: int, refill_rate_per_sec: float):
+        self.capacity = capacity
+        self.refill_rate = refill_rate_per_sec
+        self.tokens = float(capacity)
+        self.last_refill = time.time()
 
-class RateLimiter:
-    def __init__(self):
-        self.requests = defaultdict(list)
-        self.max_requests = settings.RATE_LIMIT_REQUESTS
-        self.window_seconds = settings.RATE_LIMIT_WINDOW_SECONDS
-
-    def check(self, key: str) -> bool:
-        if not settings.RATE_LIMIT_ENABLED:
-            return True
+    def consume(self) -> bool:
         now = time.time()
-        window_start = now - self.window_seconds
-        # Prune expired timestamps
-        self.requests[key] = [ts for ts in self.requests[key] if ts > window_start]
-        # EDGE-07 FIX: Remove empty keys to prevent memory bloat from unique-IP floods
-        if not self.requests[key]:
-            del self.requests[key]
-            self.requests[key].append(now)  # defaultdict recreates it cleanly
+        elapsed = now - self.last_refill
+        self.last_refill = now
+        
+        # Add back tokens accrued over time without exceeding max bucket capacity
+        self.tokens = min(float(self.capacity), self.tokens + (elapsed * self.refill_rate))
+        
+        if self.tokens >= 1.0:
+            self.tokens -= 1.0
             return True
-        if len(self.requests[key]) >= self.max_requests:
-            return False
-        self.requests[key].append(now)
-        return True
+        return False
 
+# In-memory limiter instance: Maximum 5 requests bucket, refilling 1 token every 12 seconds
+global_api_limiter = TokenBucketLimiter(capacity=5, refill_rate_per_sec=0.083)
+
+async def verify_rate_limit():
+    """Dependency injection guard protecting downstream LLM models from exploitation."""
+    if not global_api_limiter.consume():
+        logger.warning("[Security] Rate limit boundary breached. Rejecting request.")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Rate limit exceeded. System is throttling inbound requests to protect upstream API budgets."
+        )
+
+class LegacyRateLimiter:
     def check_or_raise(self, key: str):
-        if not self.check(key):
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=f"Rate limit exceeded. Max {self.max_requests} requests per {self.window_seconds}s.",
-            )
+        # We enforce the new TokenBucketLimiter globally instead
+        pass
 
-
-rate_limiter = RateLimiter()
+rate_limiter = LegacyRateLimiter()

@@ -17,7 +17,8 @@ import httpx
 from typing import Dict, Any, List
 
 from langchain_openai import ChatOpenAI
-from langchain.agents import AgentExecutor, create_react_agent
+from langchain.agents import AgentExecutor, create_react_agent, create_tool_calling_agent
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.prompts import PromptTemplate
 from langchain.tools import tool
 from langchain_community.tools.ddg_search.tool import DuckDuckGoSearchRun
@@ -251,140 +252,56 @@ class CawncadeAgent:
     def _init_agent(self):
         """
         Initializes multi-provider LLM router on first call.
-        Cascade: Tier 1 OpenRouter Nemotron -> Tier 2 HF Groq Llama 70B -> Tier 3 HF DeepInfra Gemma 27B -> Tier 4 Local NLP.
+        Cascade: Tier 1 Groq (gpt-oss-120b) -> Tier 2 Local NLP.
         """
         if self._initialized:
             return
 
         try:
-            openrouter_key = (
-                getattr(settings, "OPENROUTER_API_KEY", None)
-                or os.getenv("OPENROUTER_API_KEY")
+            groq_key = (
+                getattr(settings, "GROQ_API_KEY", None)
+                or os.getenv("GROQ_API_KEY")
             )
             
-            if not openrouter_key:
-                raise RuntimeError("OPENROUTER_API_KEY is missing from environment.")
+            if not groq_key:
+                raise RuntimeError("GROQ_API_KEY is missing from environment.")
 
-            # ── Multi-Provider Hybrid Fallback Wrapper with Provider Health Memory ─────────
-            openrouter_health = cache.get("provider_health:openrouter")
-            if openrouter_health == "RATE_LIMITED":
-                log.info("[Agent] ⚡ Provider Health Memory: OpenRouter is RATE_LIMITED (skipping Tier 1 -> jumping straight to Tier 2 HF Router)")
-                raise RuntimeError("OpenRouter cached state: RATE_LIMITED")
+            log.info("[Agent] 🚀 Launching Tier 1: Groq API (gpt-oss-120b)...")
+            primary_llm = ChatOpenAI(
+                base_url="https://api.groq.com/openai/v1",
+                api_key=groq_key,
+                model="openai/gpt-oss-120b",
+                temperature=0.01,
+                max_tokens=1024,
+                timeout=10
+            )
+            primary_llm.invoke("ping")
+            self.llm = primary_llm
+            self.active_model = "openai/gpt-oss-120b"
+            self.llm_tier = "tier_1_groq"
+            self.fallback_used = False
 
-            try:
-                log.info("[Agent] 🚀 Launching Tier 1: OpenRouter (Nemotron 120B Free)...")
-                primary_llm = ChatOpenAI(
-                    base_url="https://openrouter.ai/api/v1",
-                    api_key=openrouter_key,
-                    model="nvidia/nemotron-3-super-120b-a12b:free",
-                    temperature=0.01,
-                    max_tokens=1024,
-                    timeout=10,
-                    model_kwargs={"extra_headers": {"HTTP-Referer": "http://localhost:3000", "X-Title": "Cawncade AI"}}
-                )
-                primary_llm.invoke("ping")
-                self.llm = primary_llm
-                self.active_model = "nvidia/nemotron-3-super-120b-a12b:free"
-                self.llm_tier = "tier_1_openrouter"
-                self.fallback_used = False
-            except Exception as e1:
-                if "429" in str(e1) or "rate limit" in str(e1).lower():
-                    cache.set("provider_health:openrouter", "RATE_LIMITED", ttl=3600)
-                    log.warning("[Agent] 🛑 OpenRouter rate limited (429). Provider Health Memory cached for 60m.")
-                log.warning(f"[Agent] ⚠️ Tier 1 OpenRouter dropped: {e1}. Cascading to Tier 2 HF Router...")
-                
-                # ── Tier 2: Hugging Face Router API ──
-                hf_token = getattr(settings, "HUGGINGFACEHUB_API_TOKEN", None) or getattr(settings, "HUGGINGFACE_API_TOKEN", None) or os.getenv("HUGGINGFACEHUB_API_TOKEN")
-                if not hf_token:
-                    try:
-                        from huggingface_hub import get_token
-                        hf_token = get_token()
-                    except Exception:
-                        hf_token = None
 
-                if hf_token:
-                    try:
-                        log.info("[Agent] 🛡️ Launching Tier 2: Hugging Face Router → Llama 3.3 70B...")
-                        llm = ChatOpenAI(
-                            api_key=hf_token,
-                            base_url="https://router.huggingface.co/v1",
-                            model="meta-llama/Llama-3.3-70B-Instruct",
-                            temperature=0.01,
-                            timeout=15
-                        )
-                        llm.invoke("ping")
-                        self.llm = llm
-                        self.active_model = "meta-llama/Llama-3.3-70B-Instruct"
-                        self.llm_tier = "tier_2_hf_router"
-                        self.fallback_used = True
-                        log.info("[Agent] ✅ Tier 2 armed successfully.")
-                    except Exception as e2:
-                        log.warning(f"[Agent] ⚠️ Tier 2 saturated: {e2}. Cascading to Tier 3...")
-                        try:
-                            log.info("[Agent] 🛡️ Launching Tier 3: Hugging Face Router → Gemma 27B...")
-                            llm = ChatOpenAI(
-                                api_key=hf_token,
-                                base_url="https://router.huggingface.co/v1",
-                                model="google/gemma-2-27b-it",
-                                temperature=0.01,
-                                timeout=15
-                            )
-                            llm.invoke("ping")
-                            self.llm = llm
-                            self.active_model = "google/gemma-2-27b-it"
-                            self.llm_tier = "tier_3_hf_router"
-                            self.fallback_used = True
-                        except Exception as e3:
-                            log.warning(f"[Agent] 🔴 Tier 3 rejected: {e3}. Dropping to Tier 4 Grounded Deterministic Mode.")
-                            self.llm = None
-                            self.active_model = "local_lexrank_nlp"
-                            self.llm_tier = "tier_4_local_nlp"
-                            self.fallback_used = True
-                else:
-                    log.warning(f"[Agent] 🔴 No HF token provided. Dropping to Tier 4 Grounded Mode.")
-                    self.llm = None
-                    self.active_model = "local_lexrank_nlp"
-                    self.llm_tier = "tier_4_local_nlp"
-                    self.fallback_used = True
-
-            # ── Tool Stack ─────────────────────────────────────
-            self.tools = self._build_tools()
-
-            # ── Dynamic Prompt Assembly ────────────────────────────────
+            # 🧠 Dynamic Prompt Assembly
             SYSTEM_IDENTITY = load_prompt_layer("system_prompt.md")
             TOOL_SKILLS = load_prompt_layer("skills.md")
             SAFETY_GUARDRAILS = load_prompt_layer("guardrails.md")
-
             master_agent_prompt = f"{SYSTEM_IDENTITY}\n\n{TOOL_SKILLS}\n\n{SAFETY_GUARDRAILS}"
 
-            # ── Prompt (ReAct) ─────────────────────────────────
-            # Decoupled from langchainhub to prevent dependency crashes
-            react_template = f"""{master_agent_prompt}
+{TOOL_SKILLS}
 
-Answer the following questions as best you can. You have access to the following tools:
 
-{{tools}}
+            # 🧠 Prompt (Tool Calling)
+            chat_template = ChatPromptTemplate.from_messages([
+                ("system", master_agent_prompt),
+                ("user", "{input}"),
+                MessagesPlaceholder(variable_name="agent_scratchpad"),
+            ])
+            self.prompt = chat_template
 
-Use the following format:
-
-Question: the input question you must answer
-Thought: you should always think about what to do
-Action: the action to take, should be one of [{{tool_names}}]
-Action Input: the input to the action
-Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can repeat N times)
-Thought: I now know the final answer
-Final Answer: the final answer to the original input question
-
-Begin!
-
-Question: {{input}}
-Thought:{{agent_scratchpad}}"""
-            self.prompt = PromptTemplate.from_template(react_template)
-
-            # ── Agent + Executor ───────────────────────────────
+            # ⚙️ Agent + Executor
             if self.llm:
-                agent = create_react_agent(self.llm, self.tools, self.prompt)
+                agent = create_tool_calling_agent(self.llm, self.tools, self.prompt)
                 self._agent_executor = AgentExecutor(
                     agent=agent,
                     tools=self.tools,

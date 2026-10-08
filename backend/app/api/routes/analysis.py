@@ -2,10 +2,11 @@
 CAWNCADE AI v3.0 — API Routes for Analysis.
 Supports: Text, URL, YouTube, and Image analysis.
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from typing import Optional
 from app.core.orchestrator import orchestrator
+from app.core.rate_limiter import verify_rate_limit
 from app.core.resilience import (
     circuit_google_search, circuit_tavily, circuit_fact_check,
     circuit_safe_browsing, circuit_youtube, circuit_vision,
@@ -13,7 +14,7 @@ from app.core.resilience import (
 )
 from app.core.cache import cache
 
-router = APIRouter(tags=["analysis"])
+router = APIRouter(tags=["analysis"], dependencies=[Depends(verify_rate_limit)])
 
 
 class AnalyzeRequest(BaseModel):
