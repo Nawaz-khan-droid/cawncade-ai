@@ -56,3 +56,7 @@ The final system is a highly robust, enterprise-grade AI pipeline. Under rigorou
 
 ## Next Development Stage
 Future iterations should implement **GraphRAG**. Rather than evaluating flat web documents, the system should extract entities (People, Organizations) from the web pages, map their relationships in a Neo4J graph database, and use the LLM to traverse the graph. This would allow it to verify multi-hop claims (e.g., "Company X is funded by Person Y who was involved in Event Z").
+
+
+## Project Repository
+All source code, evaluations, and architecture configurations are permanently hosted at: [https://github.com/Nawaz-khan-droid/cawncade-ai](https://github.com/Nawaz-khan-droid/cawncade-ai)
